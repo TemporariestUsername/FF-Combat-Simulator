@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fertility Fights: The Underhive Pits</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* Hide scrollbar for cleaner cinematic look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a0510;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #831843;
+            border-radius: 4px;
+        }
+
+        /* --- VISCERAL CSS EFFECTS --- */
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px) rotate(-1deg); }
+            40%, 80% { transform: translateX(6px) rotate(1deg); }
+        }
+        .animate-shake { 
+            animation: shake 0.35s cubic-bezier(.36,.07,.19,.97) both; 
+        }
+
+        @keyframes damage-flash {
+            0% { filter: brightness(1) drop-shadow(0 0 0px red); }
+            50% { filter: brightness(1.6) drop-shadow(0 0 25px red); }
+            100% { filter: brightness(1) drop-shadow(0 0 0px red); }
+        }
+        .animate-damage { 
+            animation: damage-flash 0.4s ease-out both; 
+        }
+
+        @keyframes agitate-flash {
+            0% { filter: brightness(1) drop-shadow(0 0 0px #ec4899); }
+            50% { filter: brightness(1.4) drop-shadow(0 0 20px #ec4899); }
+            100% { filter: brightness(1) drop-shadow(0 0 0px #ec4899); }
+        }
+        .animate-agitate { 
+            animation: agitate-flash 0.4s ease-out both; 
+        }
+        
+        @keyframes heavy-throb {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.015); }
+        }
+        .animate-throb { 
+            animation: heavy-throb 2.5s infinite ease-in-out; 
+        }
+        
+        @keyframes heat-pulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(147, 51, 234, 0.3); border-color: rgba(147, 51, 234, 0.5); }
+            50% { box-shadow: 0 0 35px rgba(147, 51, 234, 0.8); border-color: rgba(168, 85, 247, 1); }
+        }
+        .animate-heat { 
+            animation: heat-pulse 1.5s infinite ease-in-out; 
+        }
+        
+        @keyframes heartbeat-vignette {
+            0%, 100% { box-shadow: inset 0 0 50px 10px rgba(220, 38, 38, 0.1); }
+            20% { box-shadow: inset 0 0 150px 30px rgba(220, 38, 38, 0.5); }
+            40% { box-shadow: inset 0 0 80px 15px rgba(220, 38, 38, 0.2); }
+            60% { box-shadow: inset 0 0 150px 30px rgba(220, 38, 38, 0.5); }
+        }
+        .animate-critical-hp { 
+            animation: heartbeat-vignette 1.5s infinite linear; 
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body class="bg-black">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- GAME CONSTANTS & DATA ---
+        const MAX_HP = 800;
+        const MAX_STAMINA = 1000;
+        const MAX_WILL = 100;
+        const MAX_FETAL_SIZE = 12.0; 
+        const MAX_VOLUPTUOUSNESS = 100;
+        const MAX_STRAIN = 100;
+        const MAX_AROUSAL = 100;
+        const MAX_MILK = 100;
+        const MAX_DOWNS = 3;
+        const TURNS_PER_ROUND = 5; 
+        const MAX_ROUNDS = 12;
+
+        const INITIAL_STATE = {
+          round: 1,
+          turn: 1,
+          pitstopTurn: 1,
+          phase: 'intro', 
+          range: 1, 
+          target: 'face', 
+          movement: 'hold', 
+          winner: null,
+          epilogueStep: null, 
+          interrupt: null, 
+          playerLastAction: null,
+          player: {
+            name: 'Jax "The Butcher"',
+            hp: 800,
+            stamina: 1000,
+            will: 100,
+            fetalSize: 1.0,
+            voluptuousness: 0,
+            strain: 0,
+            arousal: 10,
+            milk: 10,
+            agitationQueued: 0,
+            agitatedThisRound: false,
+            orgasmedThisRound: false,
+            downs: 0,
+            isDowned: false,
+            recoveryProgress: 0,
+            recoveryThreshold: 2,
+            refCount: 0,
+            inHeat: false,
+            isDistracted: false,
+            isAdvancing: false,
+            effect: { type: null, turn: 0 } 
+          },
+          enemy: {
+            name: 'Siobhan',
+            hp: 800,
+            stamina: 1000,
+            will: 100,
+            fetalSize: 1.0,
+            voluptuousness: 0,
+            strain: 0,
+            arousal: 10,
+            milk: 10,
+            agitationQueued: 0,
+            agitatedThisRound: false,
+            orgasmedThisRound: false,
+            downs: 0,
+            isDowned: false,
+            recoveryProgress: 0,
+            recoveryThreshold: 2,
+            refCount: 0,
+            inHeat: false,
+            isDistracted: false,
+            isAdvancing: false,
+            effect: { type: null, turn: 0 }
+          },
+          log: [
+            "Welcome to the Underhive Pits.",
+            "META SHIFT: Tactical Movement Engine.",
+            "1. TACTICAL RANGE: Set your target AND your movement stance. Jabs/Straights (Long/Med), Hooks (Med), Uppercuts (Close).",
+            "2. THE PARASITES: Macrosomic boy fetuses crush your joints and force agonizing pelvic pressure on your futa-meat.",
+            "3. TARGETING: Face (HP/Distract), Tits (Milk/Arousal), Belly (Agitation/Stamina Drain).",
+            "4. WILLPOWER: When your body betrays you, you can spend Willpower to fiercely interrupt and override the biological failure."
+          ]
+        };
+
+        // --- PROCEDURAL DICTIONARIES (The "Mad Libs" Slang) ---
+        const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const T_BELLY = ["broodsac", "breeder-belly", "incubator-paunch", "fluid-balloon", "stretch-drum", "breeding-sack", "brood-tank", "front-loaded distension"];
+        const T_BRATS = ["chonks", "piggies", "womb-hogs", "meat-leeches", "slosh-brats", "marrow-suckers", "greedy piglets", "massive brats"];
+        const T_BRAT_ACT = ["startle-kick", "panic-thrash", "greed-slosh", "gut-punch", "strip-mine her muscle"];
+        const T_TITS = ["squishtits", "dairy-jugs", "slosh-boulders", "milk-melons", "bloat-bags", "titmeat", "breeder-udders", "heavy liabilities"];
+        const T_FAT = ["mommypadding", "breederfat", "fuckmattress", "cellulite-saddle", "thigh-jelly", "hip-slop", "breed-cushion", "heavily grounded base"];
+        const T_SOFT = ["skinny-fat", "butter-flesh", "yield-squish", "pillowy-ruin", "doughy", "hyper-estrogenic", "ruined", "softened"];
+        const T_FAT_ACT = ["waddle-slap", "tit-smother", "fat-trap", "squish-wedge"];
+        const T_JOINTS = ["balloon-joints", "bloat-tendons", "puff-knuckles", "shudder-twigs", "rubber-knees", "jelly-ankles", "melt-ligaments", "noodle-hips"];
+        const T_FLINCH = ["wobble-buckle", "pain-flinch", "joint-give", "lock up", "hyperextend"];
+
+        // --- FLAVOR TEXT ENGINE (THE UNBROKEN WILL VS TRAITOROUS FLESH) ---
+        const FLAVOR_TEXTS = [
+          { type: 'flavor', cond: (f) => f.fetalSize < 4 && !f.isDowned, text: "Sleek, hard, and toned. {name} moves with pure athletic arrogance, determined to rip her opponent apart before the seed can take root." },
+          { type: 'flavor', cond: (f) => f.fetalSize >= 4 && f.fetalSize < 7 && !f.isDowned, text: `{name}'s taut fighting core is ruined by a firm, protruding ${rand(T_BELLY)}. She glares murderously at the crowd as they jeer her expanding shape.` },
+          { type: 'flavor', cond: (f) => f.fetalSize >= 4 && f.fetalSize < 7 && !f.isDowned, text: `A vicious ${rand(T_BRAT_ACT)} from the ${rand(T_BRATS)} makes {name} gasp. She angrily tightens her remaining abs, refusing to submit.` },
+          { type: 'flavor', cond: (f) => f.fetalSize >= 7 && f.fetalSize < 12, text: `The perverse crowd roars with sick glee, heavily objectifying {name}'s waddling frame. She spits on the mat, furiously trying to stabilize her incredibly heavy, distended ${rand(T_BELLY)}.` },
+          { type: 'flavor', cond: (f) => f.fetalSize >= 12 && !f.isDowned, text: `Physically ruined, but mentally furious. {name} grits her teeth in sheer agony, refusing to stop fighting even as her grotesque 12-month ${rand(T_BELLY)} violently stretches her skin to the tearing point.` },
+          { type: 'flavor', cond: (f) => f.fetalSize >= 10 && f.hp > 0, text: `The crushing weight of the ${rand(T_BRATS)} grinds mercilessly against {name}'s prostate. She bites her lip until it bleeds, fighting back the humiliating, involuntary whimpers.` },
+          { type: 'flavor', cond: (f) => f.voluptuousness < 25 && !f.isDowned, text: "Sweat gleams on {name}'s hard, toned physique. Her low-fat, lean fighting body is a testament to her athletic pride." },
+          { type: 'flavor', cond: (f) => f.voluptuousness >= 25 && f.voluptuousness < 50 && !f.isDowned, text: `{name} snarls as her fighting core is erased. Thick, greedy layers of ${rand(T_FAT)} violently gorge her thighs, forcing an embarrassingly plush waddle she desperately tries to correct.` },
+          { type: 'flavor', cond: (f) => f.voluptuousness >= 50 && f.voluptuousness < 75 && !f.isDowned, text: `Forced into an extreme, hyper-sexualized hourglass shape, {name} swings wildly, using the sheer, humiliating momentum of her ${rand(T_FAT)} as a weapon of pure spite.` },
+          { type: 'flavor', cond: (f) => f.voluptuousness >= 75 && !f.isDowned, text: `Buried alive in her own targeted ${rand(T_FAT)}, {name} refuses to fall. Her body is a dripping fuck-toy, but her mind is still a gladiator's.` },
+          { type: 'flavor', cond: (f) => f.voluptuousness >= 75 && !f.isDowned, text: `The absurd, gelatinous bulk of her incredible cellulite-choked thighs and heavily sloshing ${rand(T_TITS)} physically drags her down, but {name} roars, forcing her humiliated broodsow frame to keep fighting.` },
+          { type: 'flavor', cond: (f) => f.strain > 20 && f.strain < 50 && !f.isDowned, text: `{name}'s joints ache subtly, but she violently forces her exceptionally meaty, rubenesque hips to follow her footwork.` },
+          { type: 'flavor', cond: (f) => f.strain >= 50 && f.strain < 80 && !f.isDowned, text: `Every heavy step causes {name}'s ${rand(T_JOINTS)} to pop. She screams through the pain, punishing her skeleton to keep her massive meat moving.` },
+          { type: 'flavor', cond: (f) => f.strain >= 80 && !f.isDowned, text: `A furious, guttural roar tears from {name}'s throat as her pulverized cartilage grinds. She refuses to let her own ${rand(T_JOINTS)} completely ${rand(T_FLINCH)}.` },
+          { type: 'flavor', cond: (f) => f.milk > 40 && f.milk < 70, text: `Her overstimulated milk ducts throb painfully. {name} scowls at the hot pressure backing up beneath her areolas.` },
+          { type: 'flavor', cond: (f) => f.milk >= 70, text: `Her body is a leaking, desperate dairy-cow, but her spirit is iron. {name} ignores the hot colostrum spraying from her violently engorged ducts, swinging through the agony.` },
+          { type: 'flavor', cond: (f) => f.arousal > 60 && f.arousal < 70 && !f.inHeat, text: `Slick with filthy breeding-sweat, {name}'s traitorous ${rand(T_FAT)} involuntarily grind together. She punches her own leg in pure frustration, trying to break the arousal.` },
+          { type: 'flavor', cond: (f) => f.arousal >= 70 && !f.inHeat, text: `Her hormone-cooked brain is melting, but {name} fights it! She furiously wipes the thick drool from her lips, ignoring her heavily engorged futa-hog twitching beneath her fat.` },
+          { type: 'flavor', cond: (f) => f.inHeat, text: `SAVAGE HEAT! {name}'s mind screams in trapped horror! Her biology completely overrides her willpower, forcing her dripping, congested anatomy to wildly, humiliatingly rut!` },
+          { type: 'flavor', cond: (f) => f.stamina < 300, text: `{name}'s doughy, cannibalized arms drop. She gasps for air, desperately ordering her massive, sloshing ${rand(T_BELLY)} to take just one more step.` },
+          { type: 'flavor', cond: (f) => f.isDowned && f.fetalSize > 10, text: `Pinned like a stuck turtle under her own ${rand(T_BELLY)}, {name} thrashes violently on the mat, weeping in pure rage as her heavy, dimpled hips refuse to lift.` },
+          
+          { type: 'warning', cond: (f) => f.strain >= 65 && f.strain < 85 && !f.isDowned, text: `STRAIN CRITICAL: {name}'s ${rand(T_JOINTS)} buckle! She is trading her skeletal integrity for every punch!` },
+          { type: 'warning', cond: (f) => f.voluptuousness >= 65 && f.voluptuousness < 85, text: `BREEDERFAT CRITICAL: {name}'s dense, suffocating padding is actively crushing her lungs, starving her of stamina!` },
+          { type: 'warning', cond: (f) => f.milk >= 60 && f.milk < 80, text: `MILK BLOAT CRITICAL: The sheer pressure in {name}'s violently swollen milk ducts is constantly draining her health!` },
+          { type: 'warning', cond: (f) => f.arousal >= 40 && f.arousal < 55 && !f.inHeat, text: `AROUSAL RISING: {name}'s loaded balls throb painfully! She is fighting a desperate, losing battle against a humiliating, forced climax!` },
+          { type: 'warning', cond: (f) => f.arousal >= 60 && f.arousal < 70 && !f.inHeat, text: `HEAT IMMINENT: {name}'s willpower is cracking! One more spike of lust and her traitorous body will completely hijack her mind into Savage Heat!` },
+          { type: 'warning', cond: (f) => f.fetalSize >= 10 && f.fetalSize < 12 && !f.isDowned, text: `LABOR IMMINENT: The gruesome size of {name}'s macrosomic male litters practically paralyzes her, fighting her every desperate movement!` }
+        ];
+
+        // --- RANGE & TARGETING ACTIONS ---
+        const getActions = (fetalSize, projectedRange, isBellyBlocked, currentTarget) => {
+          let actions = [];
+          const isFit = fetalSize < 6;
+          const isOverdue = fetalSize >= 10;
+          
+          actions.push({ id: 'brace', name: isFit ? 'Tight Guard' : 'Agonized Heave', desc: 'Restore Stamina & Will', type: 'rest', val: 250, cost: 0, color: 'bg-blue-900/40 hover:bg-blue-800/60', disabled: false });
+          actions.push({ id: 'grapple', name: isFit ? 'Tactical Clinch' : 'Crushing Smother', desc: 'Close (Arousal)', type: 'arousal', val: 40, cost: 50, color: projectedRange !== 2 ? 'bg-gray-800' : 'bg-purple-900/60 hover:bg-purple-800', disabled: projectedRange !== 2 });
+
+          const jabName = isFit ? 'Precision Jab' : (isOverdue ? 'Stubborn Flail' : 'Flabby Jab');
+          const straightName = isFit ? 'Power Straight' : (isOverdue ? 'Reckless Lunge' : 'Heavy Cross');
+          const hookName = isFit ? 'Medium Hook' : (isOverdue ? 'Desperate Swing' : 'Meaty Hook');
+          const uppercutName = isFit ? 'Tight Uppercut' : (isOverdue ? 'Agonized Upthrust' : 'Heaving Uppercut');
+
+          const ucBlocked = isBellyBlocked && (currentTarget === 'face' || currentTarget === 'tits');
+
+          actions.push({ 
+              id: 'jab', name: jabName, desc: 'Long/Med Range', type: 'strike', val: 30, cost: 20, 
+              color: projectedRange === 2 ? 'bg-gray-800' : 'bg-neutral-800 hover:bg-neutral-700', disabled: projectedRange === 2,
+              tooltip: projectedRange === 2 ? "Requires LONG or MEDIUM Range." : "High accuracy. Hitting the Face applies 'Distracted' debuff to their next roll." 
+          });
+          
+          actions.push({ 
+              id: 'straight', name: straightName, desc: 'Long/Med Range', type: 'strike', val: 80, cost: 45, 
+              color: projectedRange === 2 ? 'bg-gray-800' : 'bg-neutral-800 hover:bg-neutral-700', disabled: projectedRange === 2,
+              tooltip: projectedRange === 2 ? "Requires LONG or MEDIUM Range." : "Heavy damage from a distance." 
+          });
+          
+          actions.push({ 
+              id: 'hook', name: hookName, desc: 'Med Range (Solid)', type: 'strike', val: 70, cost: 50, 
+              color: projectedRange !== 1 ? 'bg-gray-800' : 'bg-neutral-800 hover:bg-neutral-700', disabled: projectedRange !== 1,
+              tooltip: projectedRange !== 1 ? "Requires MEDIUM Range." : "Sweeping blow. Good balance of damage and cost." 
+          });
+          
+          actions.push({ 
+              id: 'uppercut', name: ucBlocked ? 'BLOCKED BY BELLY' : uppercutName, desc: 'Close Range (Massive)', type: 'strike', val: 120, cost: 65, 
+              color: projectedRange !== 2 || ucBlocked ? 'bg-gray-800' : 'bg-neutral-800 hover:bg-neutral-700', disabled: projectedRange !== 2 || ucBlocked,
+              tooltip: projectedRange !== 2 ? "Requires CLOSE Range." : (ucBlocked ? "BELLY LIABILITY: Enormous wombs wedged together! Cannot reach upper body!" : "Devastating close-range power.")
+          });
+
+          return actions;
+        };
+
+        const getDownedActions = () => [
+          { id: 'restDowned', name: 'Helpless Gasping', desc: 'Regain Stamina, +0 Rise', type: 'restDowned', val: 200, cost: 0, color: 'bg-blue-900/40 hover:bg-blue-800', disabled: false },
+          { id: 'slowRise', name: 'Agonized Crawl', desc: 'Low Stamina, +1-2 Rise', type: 'slowRise', val: 0, cost: 30, color: 'bg-yellow-800/40 hover:bg-yellow-700', disabled: false },
+          { id: 'heaveUp', name: 'Reckless Upthrust', desc: 'High Stam, +2-3 Rise (Risky)', type: 'heaveUp', val: 0, cost: 100, color: 'bg-red-800/40 hover:bg-red-700', disabled: false }
+        ];
+
+        const getEnemyDownedActions = () => [
+          { id: 'wait', name: 'Catch Breath', desc: 'Watch her struggle', type: 'wait', val: 150, cost: 0, color: 'bg-blue-900/40 hover:bg-blue-800', disabled: false },
+          { id: 'taunt', name: 'Humiliate', desc: 'Spike her heat', type: 'taunt', val: 20, cost: 0, color: 'bg-purple-900/40 hover:bg-purple-800', disabled: false }
+        ];
+
+        // --- HELPER FUNCTIONS ---
+        const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+        const calcFetusWeight = (size) => Math.floor(Math.pow(size, 2.5) * 0.4) + 15;
+
+        const calcCost = (baseCost, voluptuousness) => {
+          if (baseCost <= 0) return baseCost; 
+          const multiplier = 1 + (voluptuousness * 0.015); 
+          return Math.floor(baseCost * multiplier);
+        };
+
+        const getRollModifier = (actionType, attackerObj, defenderObj, actionId) => {
+          let mod = 0;
+          
+          if (attackerObj.fetalSize < 4) mod += 15;
+          if (attackerObj.stamina <= 0) mod -= 50;
+          else if (attackerObj.stamina < 300) mod -= ((300 - attackerObj.stamina) / 300) * 30;
+
+          if (attackerObj.isDistracted) mod -= 25; 
+          if (defenderObj && defenderObj.isAdvancing) mod += 30; 
+
+          const fetalPenalty = Math.floor(attackerObj.fetalSize * 2.5); 
+          const fatPenalty = Math.floor(attackerObj.voluptuousness * 0.4); 
+          const fatBuff = Math.floor(attackerObj.voluptuousness * 0.5); 
+          const strainPenalty = Math.floor(attackerObj.strain * 0.4); 
+
+          if (actionType === 'strike') {
+            mod -= fetalPenalty; 
+            mod -= fatPenalty; 
+            mod -= (attackerObj.milk * 0.2); 
+            if (actionId === 'jab') mod += 20; 
+            if (actionId === 'uppercut') mod -= 10; 
+          } else if (actionType === 'arousal') {
+            mod += fatBuff; 
+            mod += Math.floor(attackerObj.arousal * 0.2); 
+          } else if (actionType === 'rest') {
+            mod -= fatPenalty; 
+            mod -= strainPenalty; 
+            mod -= Math.floor(attackerObj.arousal * 0.3); 
+          } else if (actionType === 'slowRise') {
+            mod += 35; 
+            mod -= fetalPenalty; 
+          } else if (actionType === 'heaveUp') {
+            mod += 15; 
+            mod -= fatPenalty; 
+            mod -= strainPenalty; 
+          } else if (actionType === 'restDowned') {
+            mod -= fatPenalty; 
+            mod -= Math.floor(attackerObj.arousal * 0.3);
+          }
+          return Math.floor(mod);
+        };
+
+        const evaluateRoll = (baseRoll, mod) => {
+          const finalRoll = baseRoll + mod;
+          if (finalRoll <= 10) return { id: 'CRIT_FAIL', mult: 0, text: 'CRITICAL FAILURE', isSuccess: false };
+          if (finalRoll <= 35) return { id: 'FAIL', mult: 0, text: 'FAILURE', isSuccess: false };
+          if (finalRoll <= 60) return { id: 'WEAK', mult: 0.5, text: 'WEAK SUCCESS', isSuccess: true };
+          if (finalRoll <= 90) return { id: 'SUCCESS', mult: 1.0, text: 'SUCCESS', isSuccess: true };
+          return { id: 'CRIT_SUCCESS', mult: 1.5, text: 'CRITICAL SUCCESS', isSuccess: true };
+        };
+
+        const isActionValid = (actionId, range, isBellyBlocked, target) => {
+            if (actionId === 'wait' || actionId === 'taunt') return true;
+            if (actionId === 'jab' || actionId === 'straight') return range <= 1;
+            if (actionId === 'hook') return range === 1;
+            if (actionId === 'uppercut') {
+                if (range !== 2) return false;
+                if (isBellyBlocked && (target === 'face' || target === 'tits')) return false;
+                return true;
+            }
+            if (actionId === 'grapple') return range === 2;
+            if (actionId === 'brace' || actionId === 'restDowned' || actionId === 'slowRise' || actionId === 'heaveUp') return true;
+            return false;
+        };
+
+        const triggerKnockdown = (fighter, logs, reasonStr) => {
+          fighter.downs += 1;
+          fighter.isDowned = true;
+          fighter.refCount = 0;
+          fighter.recoveryProgress = 0;
+          fighter.isDistracted = false;
+          
+          const ruinLevel = 1 + Math.floor(fighter.fetalSize / 3) + Math.floor(fighter.voluptuousness / 20);
+          fighter.recoveryThreshold = clamp(ruinLevel, 2, 9);
+          
+          logs.push(`${reasonStr} ***`);
+          logs.push(`[TIME STOP] The ref starts the count! Weighed down by heavy ${rand(T_FAT)} and bloated milkers, ${fighter.name}'s Ruin Level is ${fighter.recoveryThreshold}. She must fight through the agony and accumulate enough Success Points to heave herself up before the 10-Count ends!`);
+        };
+
+        const generateActionText = (result, action, attacker, defender, isDefResting, actionTarget) => {
+            let log = `[${result.text}] `;
+
+            const isAttackerFit = attacker.fetalSize < 4;
+            const isAttackerSoft = attacker.fetalSize >= 4 && attacker.fetalSize < 10;
+            const isAttackerRuined = attacker.fetalSize >= 10;
+
+            const isDefenderBellyFit = defender && defender.fetalSize < 4;
+            const isDefenderBellySoft = defender && defender.fetalSize >= 4 && defender.fetalSize < 10;
+            const isDefenderBellyRuined = defender && defender.fetalSize >= 10;
+
+            const isAttackerLean = attacker.voluptuousness < 30;
+            const isAttackerPlush = attacker.voluptuousness >= 30 && attacker.voluptuousness < 75;
+            const isAttackerFat = attacker.voluptuousness >= 75;
+
+            const isDefenderLean = defender && defender.voluptuousness < 30;
+            const isDefenderPlush = defender && defender.voluptuousness >= 30 && defender.voluptuousness < 75;
+            const isDefenderFat = defender && defender.voluptuousness >= 75;
+
+            if (action.type === 'move') {
+                if (!result.isSuccess) {
+                    if (isAttackerLean && isAttackerFit) return log + `${attacker.name} executes a tactical ${action.name.toLowerCase()}, but misjudges her footing on the slick canvas!`;
+                    if (isAttackerPlush || isAttackerSoft) return log + rand([
+                        `${attacker.name} attempts to ${action.name.toLowerCase()}, but her newly voluptuous, incredibly thick hips throw off her balance!`,
+                        `${attacker.name} violently commands her legs to move, but her highly estrogenic, heavy-bottomed thighs chafe wetly, ruining her footwork!`,
+                        `The heavy drag of her tight pregnant bump makes ${attacker.name} stumble clumsily! She curses her expanding body!`
+                    ]);
+                    return log + rand([
+                        `${attacker.name} desperately tries to ${action.name.toLowerCase()}, but her ridiculously huge, sloshing ${rand(T_BELLY)} completely anchors her in place!`,
+                        `Her traitorous ${rand(T_JOINTS)} give out! ${attacker.name} trips over the sheer gelatinous mass of her own incredibly thick, cellulite-choked ${rand(T_FAT)}!`,
+                        `The agonizing, suffocating heft of her bloated ${rand(T_TITS)} throws her off balance as ${attacker.name} pitifully fails to move! She sobs in frustration!`,
+                        `She tries to move, but her massive, pudding-like ${rand(T_TITS)} physically ooze against her own biceps, trapping her arms and ruining her momentum!`
+                    ]);
+                }
+                const direction = action.id === 'advance' ? 
+                    (isAttackerRuined ? `roars, aggressively waddling her massive, dripping bulk forward, her breasts spilling over her ${rand(T_BELLY)}` : (isAttackerPlush || isAttackerSoft) ? 'forces her plump twin-bump and swaying hips forward' : 'darts inward with lethal speed') : 
+                    (isAttackerRuined ? `clumsily backs away, dragging her deeply dimpled, jiggly frame in a desperate retreat` : (isAttackerPlush || isAttackerSoft) ? 'steps back, her plush thighs slapping wetly together' : 'swiftly retreats');
+                return log + `${attacker.name} ${direction}!`;
+            }
+
+            if (action.type === 'rest' || action.type === 'restDowned') {
+                if (isAttackerLean && isAttackerFit) return log + `${attacker.name} breathes sharply, tightly bracing her washboard abs and resetting her gladiator stance!`;
+                if (isAttackerPlush) return log + `${attacker.name} wipes sweat from her plush cleavage, panting heavily as she forces her thick, soft hips to sink into a wide stance.`;
+                return log + rand([
+                    `The exhausted fighter violently hoists her massive, sloshing ${rand(T_BELLY)} up with her forearms, roaring in effort just to take the crushing pressure off her pulverized spine so she can gasp a single breath.`,
+                    `${attacker.name} groans through gritted teeth, aggressively digging her puffy fingers into her own gelatinous ${rand(T_FAT)} as she begs her crushed lungs for air.`,
+                    `A furious, sweaty moan escapes her lips as ${attacker.name} literally uses her massive, sloshing ${rand(T_BELLY)} as a fleshy table to rest her doughy arms.`,
+                    `She violently shoves her heavy, oozing ${rand(T_TITS)} aside, desperately trying to expose her ribcage enough to suck in a ragged breath.`
+                ]);
+            }
+            if (action.type === 'slowRise' || action.type === 'heaveUp') {
+                if (isAttackerLean && isAttackerFit) return log + `${attacker.name} uses her elite core strength to spring powerfully off the mat!`;
+                if (isAttackerPlush) return log + `Struggling against her new, exceptionally heavy birthing hips, ${attacker.name} furiously manages to heave her deeply plush frame upward!`;
+                return log + rand([
+                    `With an agonized, defiant roar, ${attacker.name} somehow forces her incredibly heavy, dimpled ${rand(T_FAT)} to defy gravity!`,
+                    `${attacker.name} violently swings her massive, sloshing belly upward, fighting desperately against her own deep, anchor-like adipose tissue!`,
+                    `Her pulverized cartilage grinds loudly as ${attacker.name} manages to heave her dripping, hyper-fertile, immensely fat frame off the canvas, refusing to submit!`
+                ]);
+            }
+            if (action.type === 'arousal') {
+                if (isAttackerLean && isAttackerFit) return log + `${attacker.name} executes a flawless takedown, forcing her hard, toned futa-body against ${defender.name} in a dominant pin!`;
+                if (isAttackerPlush) return log + `${attacker.name} traps her opponent, using her extremely dense, highly estrogenic thighs to create intense, humiliating friction!`;
+                return log + rand([
+                    `${attacker.name} weaponizes her ruination! She forces her massive, gelatinous, heavy-bottomed curves into ${defender.name}, grinding her dripping breeder-loins mercilessly!`,
+                    `A desperate, overwhelmingly lewd smothering! ${attacker.name} aggressively buries her opponent beneath a suffocating, oozing mountain of leaking milk and hot broodsow ${rand(T_FAT)}!`,
+                    `Fighting through the haze of lust, ${attacker.name} traps ${defender.name} in an obscene pile of deep, grab-able hip-meat and violently rubs her engorged futa-hog against the squish!`
+                ]);
+            }
+
+            if (action.type === 'strike') {
+                let punchName = action.name.toLowerCase();
+                let motions = [];
+                if (isAttackerLean) {
+                    motions = [
+                        `Pivoting on lean hips, {attacker} drives a lightning-fast ${punchName}`,
+                        `Using her peak athletic conditioning, {attacker} snaps a brutal ${punchName}`,
+                        `{attacker}'s hard, toned muscles coil and release, launching a precise ${punchName}`
+                    ];
+                } else if (isAttackerPlush) {
+                    motions = [
+                        `Leaning into her hyper-curvy, heavily padded mommy-bod, {attacker} throws a heavy ${punchName}`,
+                        `Weaponizing her ridiculously wide, heavy-bottomed birthing hips, {attacker} hurls a fleshy ${punchName}`,
+                        `{attacker}'s extremely thick, rubenesque hips drag slightly as she swings a plush, sweaty ${punchName}`
+                    ];
+                } else {
+                    motions = [
+                        `Roaring in absolute defiance, {attacker} forces her incredibly fat, gelatinous broodsow bulk forward into a desperate ${punchName}`,
+                        `Screaming in frustration, {attacker} commands her completely cannibalized, doughy arms to throw a pathetic ${punchName}`,
+                        `Gritting her teeth against the agonizing heft of her bloated ${rand(T_TITS)}, {attacker} violently throws her ruined pornbody into a frantic ${punchName}`,
+                        `Awkwardly cupping one fat, pudding-like udder out of her way, {attacker} desperately throws a wide, flabby ${punchName}`
+                    ];
+                }
+                let motionStr = rand(motions).replace(/\{attacker\}/g, attacker.name);
+
+                let targets = [];
+                if (actionTarget === 'face') {
+                    targets = [`directly at {defender}'s jaw`, `toward {defender}'s sweaty, flushed face`, `at the side of {defender}'s head`];
+                } else if (actionTarget === 'tits') {
+                    if (isDefenderLean) targets = [`into {defender}'s firm pectorals`, `at {defender}'s aching, hormone-injected chest`];
+                    else if (isDefenderPlush) targets = [`into {defender}'s rapidly swelling, heavily padded cleavage`, `against {defender}'s tender, jiggling new assets`];
+                    else targets = [`deep into {defender}'s painfully distended, highly estrogenic ${rand(T_TITS)}`, `against {defender}'s absurdly massive, bouncing hucow ${rand(T_TITS)}`, `directly into {defender}'s incredibly heavy, oozing milkers`];
+                } else if (actionTarget === 'belly') {
+                    if (isDefenderBellyFit) targets = [`into {defender}'s taut, muscular midsection`, `at {defender}'s hard, flat stomach`];
+                    else if (isDefenderBellySoft) targets = [`against {defender}'s high, tight pregnant belly`, `into {defender}'s firm, distinctly pregnant bump`];
+                    else targets = [`directly into {defender}'s ridiculously overstuffed, sloshing ${rand(T_BELLY)}`, `against the drum-tight, oily, vein-streaked skin of {defender}'s overdue 12-month belly`, `deep into the extremely heavy, bulging broodsow uterus of {defender}`];
+                }
+                let targetStr = rand(targets).replace(/\{defender\}/g, defender.name);
+
+                let resolutionStr = "";
+                if (!result.isSuccess) {
+                    if (isAttackerLean && isAttackerFit) {
+                        resolutionStr = `... but ${defender.name} flawlessly slips the strike with elite reflexes!`;
+                    } else {
+                        resolutionStr = rand([
+                            `... but her traitorous, cannibalized muscles outright refuse the command, turning the fierce strike into a pathetic whiff!`,
+                            `... but the sheer, gravity-warping weight of her own heavy estrogenic fat violently drags her off balance!`,
+                            `... but her incredibly thick, cellulite-choked thighs aggressively trip her up. She sobs in rage as her ${rand(T_JOINTS)} ${rand(T_FLINCH)}!`,
+                            `... but her massive ${rand(T_BELLY)} physically blocks her own momentum, ruining the blow entirely in a sweaty, frustrating mess!`,
+                            `... but her oozing ${rand(T_TITS)} ${rand(T_FAT_ACT)} heavily against her own skinny-fat bicep, physically blocking the swing mid-air!`
+                        ]);
+                    }
+                } else if (isDefResting) {
+                    if (isDefenderLean) {
+                        resolutionStr = `... but it glances harmlessly off a crisp, professional guard!`;
+                    } else {
+                        resolutionStr = rand([
+                            `... but it sinks uselessly into a deep, humiliating sea of highly estrogenic hip-meat! The dense ${rand(T_FAT)} swallows the impact entirely!`,
+                            `... but ${defender.name}'s incredibly thick, grabbing ${rand(T_FAT)} absorbs the shock like a giant, squishy sponge!`,
+                            `... but the heavy, gelatinous layer of shameful breederfat neutralizes the impact, making her massive thighs jiggle violently but safely!`
+                        ]);
+                    }
+                } else {
+                    let impacts = [];
+                    if (actionTarget === 'face') {
+                        if (result.id === 'CRIT_SUCCESS') impacts = [`... A devastating, bone-rattling connection! ${defender.name}'s hormone-cooked brain is totally scrambled!`, `... A catastrophic blow that nearly snaps her neck!`, `... The brutal impact leaves ${defender.name} completely dazed, drooling, and reeling!`, `... She connects perfectly! The sheer mass behind the strike violently rocks ${defender.name}!`];
+                        else impacts = [`... smacking her solidly!`, `... leaving her dizzy and highly distracted!`, `... clattering heavily against her skull!`, `... A solid, wet hit that sends sweat flying!`];
+                    } else if (actionTarget === 'tits') {
+                        if (result.id === 'CRIT_SUCCESS') impacts = [`... A catastrophic crush of her hucow anatomy! Hot milk violently erupts as a blinding spike of pure, desperate arousal completely melts her mind!`, `... The heavy slosh balloons are brutally compressed, sending a massive shockwave of leaking cream and agonizing heat directly to her flooded loins!`, `... A devastating impact! The squishy ${rand(T_TITS)} practically bursts, overloading the broodsow with desperate, dripping lust!`];
+                        else impacts = [`... violently splashing hot colostrum all over the canvas!`, `... making the massive ${rand(T_TITS)} jiggle agonizingly, severely spiking her heat!`, `... sending a painful, deeply arousing jolt through the tender, bloated udders!`, `... completely burying the fist in soft, leaking milky squish!`];
+                    } else if (actionTarget === 'belly') {
+                        if (result.id === 'CRIT_SUCCESS') impacts = [`... It's a catastrophic, deep-sinking blow! The massive, macrosomic litter shifts violently, pulverizing her ruined pelvis and sending the greedy ${rand(T_BRATS)} into an absolute frenzy!`, `... A deeply humiliating, devastating impact! The drum-tight ${rand(T_BELLY)} absorbs the massive force, causing the demanding male brats inside to panic-thrash wildly!`, `... The heavy, sloshing ${rand(T_BELLY)} is brutally compressed! The highly agitated engineered litters aggressively demand immediate caloric sacrifice!`];
+                        else impacts = [`... sending a violent, sickening ripple through the heavy amniotic fluid!`, `... a wet, echoing smack that deeply agitates the testy ${rand(T_BRATS)}!`, `... mercilessly mashing into the bulging uterus and startling the greedy ${rand(T_BRATS)}!`, `... causing the heavy belly to slosh and pull agonizingly on her ruined spine!`];
+                    }
+                    resolutionStr = rand(impacts);
+                }
+
+                log += `${motionStr} ${targetStr}${resolutionStr} `;
+                return log;
+            }
+            return log;
+        };
+
+        // --- UI COMPONENTS ---
+        const ProgressBar = ({ label, value, max, colorClass, compact = false }) => {
+          const percentage = clamp((value / max) * 100, 0, 100);
+          return (
+            <div className={compact ? "mb-1" : "mb-2"}>
+              <div className="flex justify-between text-[10px] md:text-xs mb-1 text-gray-300 font-bold uppercase tracking-wider">
+                <span>{label}</span>
+                <span>{typeof value === 'number' && value % 1 !== 0 ? value.toFixed(1) : Math.floor(value)} / {max}</span>
+              </div>
+              <div className={`w-full bg-gray-800 rounded-full border border-gray-700 overflow-hidden shadow-inner ${compact ? 'h-2' : 'h-3'}`}>
+                <div className={`h-full transition-all duration-500 ${colorClass}`} style={{ width: `${percentage}%` }}></div>
+              </div>
+            </div>
+          );
+        };
+
+        const generateStatusReport = (f, isPlayer) => {
+            let report = "";
+            const p = isPlayer ? {
+                abs_tight: "You feel your hard abs tighten and flex. The implanted seed is just a heavy knot deep in your gut.",
+                belly_med: `Your firm, distinctly pregnant belly bulges outward, ruining your center of mass. The growing ${rand(T_BRATS)} slosh uncomfortably inside you.`,
+                belly_high: `Your brutally distended belly lurches with heavy, impatient life, practically tearing your skin. The massive ${rand(T_BRATS)} mercilessly crowd your lungs and crush your bladder.`,
+                fat_low: "Your lean, athletic muscle remains fully intact, ready to strike.",
+                fat_med: `Thick, squishy padding has swallowed your core. Your new, highly estrogenic hips sway heavily, forcing a humiliating waddle.`,
+                fat_high: `Total adipose surrender. You are buried in your own ruined flesh. Deep, dimpled ${rand(T_FAT)} anchors your waddling thighs to the mat, and permanent, heavy ${rand(T_TITS)} smother your chest.`,
+                milk_med: `Your swollen milk ducts throb and ache with pressurized fluid beneath the skin.`,
+                milk_high: `Hot colostrum constantly streams from your painfully engorged, violently leaking teats.`,
+                strain_med: `Trapped fluid bloats your ankles, while relaxin makes your knees feel terrifyingly loose and wobbly.`,
+                strain_high: `Your pulverized cartilage grinds bone-on-bone. The sheer agony in your chemically melted ${rand(T_JOINTS)} demands pure willpower just to remain standing.`,
+                arousal_med: `Slick, musky pre-cum heavily soaks your thighs as your congested futa-meat throbs against your will.`,
+                arousal_high: `SAVAGE HEAT. Your preggo-brain is completely cooked by lust. Thick drool hangs from your lips as your heavy hips involuntarily rut the empty air!`
+            } : {
+                abs_tight: `Tight skin stretches over ${f.name}'s hard, lean torso. The seed hasn't ruined her yet.`,
+                belly_med: `Her firm, protruding belly pulls her athletic posture out of alignment, the growing ${rand(T_BRATS)} visibly shifting inside her.`,
+                belly_high: `Her brutally distended belly lurches with heavy, impatient life. The sheer weight of the ${rand(T_BRATS)} forces her into a desperate, wide-legged stance.`,
+                fat_low: "Her low-fat, highly lethal fighting frame remains sharp and uncompromised.",
+                fat_med: `Squishy padding has erased her abs, and her thick, rubenesque hips drag with a humiliating, estrogenic heaviness.`,
+                fat_high: `Total adipose surrender. She is an immobile mountain of jiggly broodsow meat. The utterly unfair weight drags heavily on her deep, dimpled ${rand(T_FAT)}.`,
+                milk_med: `Her swollen milk ducts visibly bulge, the pressure making her wince with every movement.`,
+                milk_high: `Thick, hot cream constantly leaks from her painfully engorged teats, splashing down her sweaty belly.`,
+                strain_med: `Edema visibly puffs her ankles, and her knees tremble unsteadily under her shifting weight.`,
+                strain_high: `Her ${rand(T_JOINTS)} pop and crunch sickeningly. Sharp agony radiates through her completely pulverized pelvis.`,
+                arousal_med: `Thick pre-cum pours down her thighs. Her heavy, engorged futa-hog violently throbs through her soaked shorts.`,
+                arousal_high: `SAVAGE HEAT. Her preggo-brain is fried. She moans like a feral animal, her dripping hips involuntarily rutting the air!`
+            };
+
+            if (f.fetalSize >= 10) report += p.belly_high + " ";
+            else if (f.fetalSize >= 5) report += p.belly_med + " ";
+            else report += p.abs_tight + " ";
+
+            if (f.voluptuousness >= 75) report += p.fat_high + " ";
+            else if (f.voluptuousness >= 35) report += p.fat_med + " ";
+            else report += p.fat_low + " ";
+
+            if (f.strain >= 80) report += p.strain_high + " ";
+            else if (f.strain >= 40) report += p.strain_med + " ";
+
+            if (f.inHeat) report += p.arousal_high + " ";
+            else if (f.arousal >= 60) report += p.arousal_med + " ";
+
+            if (f.milk >= 70) report += p.milk_high + " ";
+            else if (f.milk >= 40) report += p.milk_med + " ";
+
+            return report.trim();
+        };
+
+        const FighterCard = ({ data, isPlayer, currentTurn }) => {
+          const isHit = data.effect?.turn === currentTurn;
+          const fxType = isHit ? data.effect.type : null;
+          
+          let fxClasses = '';
+          if (fxType === 'crit') fxClasses = 'animate-shake animate-damage';
+          else if (fxType === 'hit') fxClasses = 'animate-damage';
+          else if (fxType === 'agitate') fxClasses = 'animate-agitate';
+
+          const heatClass = data.inHeat && !data.isDowned ? 'animate-heat border-purple-500' : isPlayer ? 'border-pink-900' : 'border-purple-900';
+          const throbClass = data.fetalSize >= 10 && !data.isDowned && !isHit ? 'animate-throb' : '';
+          
+          const musclePct = Math.max(0, 100 - clamp((data.voluptuousness / MAX_VOLUPTUOUSNESS) * 100, 0, 100));
+
+          return (
+          <div className={`p-3 md:p-4 rounded-lg border-2 flex flex-col bg-black/60 shadow-[0_0_15px_rgba(0,0,0,0.8)] backdrop-blur-sm relative overflow-hidden transition-colors ${heatClass} ${throbClass} ${fxClasses} ${data.isDowned ? 'opacity-80 border-red-600 shadow-[0_0_20px_red]' : ''}`}>
+            
+            <div className="absolute inset-0 opacity-20 pointer-events-none transition-opacity duration-1000" 
+                 style={{ background: `radial-gradient(circle at center, ${data.fetalSize >= 12 ? 'rgba(255,0,0,0.5)' : data.fetalSize > 8 ? 'rgba(255,0,128,0.8)' : 'transparent'} 0%, transparent 100%)`}} />
+            
+            <h2 className={`text-lg md:text-xl font-black uppercase mb-2 tracking-widest flex justify-between items-center flex-wrap gap-1 ${data.isDowned ? 'text-red-500' : isPlayer ? 'text-pink-500' : 'text-purple-500'}`}>
+              <span>{data.name}</span>
+              <div className="flex gap-1">
+                {data.agitationQueued > 0 && <span className="text-[10px] md:text-xs bg-red-900 text-white px-2 py-1 rounded animate-pulse">! HORMONES: +{data.agitationQueued} !</span>}
+                {data.inHeat && !data.isDowned && <span className="text-[10px] md:text-xs bg-purple-600 text-white px-2 py-1 rounded animate-pulse" title="Savage Heat: Preggo-brain melted. Forced to rut.">! SAVAGE HEAT !</span>}
+              </div>
+            </h2>
+            
+            <div className="flex gap-2 mb-3 items-center">
+              {[1, 2, 3].map(i => (
+                <div key={i} className={`h-3 w-3 md:h-4 md:w-4 rounded-full border-2 border-red-800 ${data.downs >= i ? 'bg-red-600 shadow-[0_0_8px_red]' : 'bg-transparent'}`} title={`Down ${i}`} />
+              ))}
+              <span className="text-[10px] md:text-xs text-red-500 font-bold ml-2 uppercase tracking-widest">Downs (3/Rd = TKO)</span>
+            </div>
+
+            {data.isDowned && (
+              <div className="mb-2 bg-red-900/80 border border-red-500 p-2 rounded relative z-20">
+                  <ProgressBar label={`Rise Progress (Count: ${data.refCount}/10)`} value={data.recoveryProgress} max={data.recoveryThreshold} colorClass="bg-red-500" />
+              </div>
+            )}
+
+            <div className="space-y-1 mb-2 border-b border-gray-700 pb-2">
+              <ProgressBar label="Health (HP)" value={data.hp} max={MAX_HP} colorClass={data.hp > 250 ? 'bg-green-500' : data.hp > 100 ? 'bg-yellow-500' : 'bg-red-600 animate-pulse'} />
+              <ProgressBar label="Energy (Stamina)" value={data.stamina} max={MAX_STAMINA} colorClass={data.stamina > 300 ? 'bg-blue-500' : 'bg-orange-500'} />
+              <ProgressBar label="Willpower (Defiance)" value={data.will} max={MAX_WILL} colorClass="bg-purple-500" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <ProgressBar label="Fetal Size (Parasites)" value={data.fetalSize} max={MAX_FETAL_SIZE} colorClass="bg-fuchsia-600" compact />
+              <ProgressBar label="Arousal (Risk)" value={data.arousal} max={MAX_AROUSAL} colorClass={data.arousal > 80 ? 'bg-red-500 animate-pulse' : data.arousal > 50 ? 'bg-pink-500' : 'bg-pink-800'} compact />
+              
+              <ProgressBar label="Athletic Muscle" value={musclePct} max={100} colorClass="bg-emerald-600" compact />
+              <ProgressBar label="Squishy Adipose (Fat)" value={data.voluptuousness} max={MAX_VOLUPTUOUSNESS} colorClass="bg-pink-400" compact />
+              
+              <ProgressBar label="Milk Bloat" value={data.milk} max={MAX_MILK} colorClass="bg-gray-100" compact />
+              <ProgressBar label="Strain (Joints)" value={data.strain} max={MAX_STRAIN} colorClass="bg-yellow-600" compact />
+            </div>
+            
+            <div className="mt-3 p-3 bg-black/80 border border-pink-900/30 rounded text-xs md:text-sm text-gray-300 leading-relaxed font-serif shadow-inner h-full relative z-20">
+              {data.isDowned && <div className="text-red-500 font-black uppercase tracking-widest mb-1 animate-pulse">WRITHING ON THE MAT!</div>}
+              {data.stamina <= 0 && <div className="text-orange-500 font-black uppercase tracking-widest mb-1">EXHAUSTED: Extremely Vulnerable!</div>}
+              
+              <span className="text-pink-200/90 italic">{generateStatusReport(data, isPlayer)}</span>
+            </div>
+          </div>
+          );
+        };
+
+        // --- MAIN APPLICATION ---
+        function App() {
+          const [gameState, setGameState] = useState(INITIAL_STATE);
+          const logEndRef = useRef(null);
+
+          useEffect(() => {
+            if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }, [gameState.log]);
+
+          const startGame = () => {
+            setGameState({
+              ...INITIAL_STATE,
+              phase: 'combat',
+              log: ["The bell shrieks. The fighters step forward. Relish your strength now; your bodies will soon betray you."]
+            });
+          };
+
+          const checkGameOver = (state, isRoundEnd = false) => {
+            if (state.player.hp <= 0 || state.player.downs >= MAX_DOWNS) {
+                return { isOver: true, winner: 'enemy', reason: state.player.downs >= MAX_DOWNS ? 'TKO (3 Downs in a Round)' : 'KO (Unconscious)' };
+            }
+            if (state.enemy.hp <= 0 || state.enemy.downs >= MAX_DOWNS) {
+                return { isOver: true, winner: 'player', reason: state.enemy.downs >= MAX_DOWNS ? 'TKO (3 Downs in a Round)' : 'KO (Unconscious)' };
+            }
+            
+            if (isRoundEnd && (state.round >= MAX_ROUNDS || state.player.fetalSize >= MAX_FETAL_SIZE || state.enemy.fetalSize >= MAX_FETAL_SIZE)) {
+                const pScore = state.player.hp + state.player.stamina - (state.player.fetalSize * 100) - (state.player.downs * 200);
+                const eScore = state.enemy.hp + state.enemy.stamina - (state.enemy.fetalSize * 100) - (state.enemy.downs * 200);
+                let winner = 'draw';
+                if (pScore > eScore) winner = 'player';
+                else if (eScore > pScore) winner = 'enemy';
+                
+                let reason = 'Judge Decision (Round Limit)';
+                if (state.player.fetalSize >= MAX_FETAL_SIZE || state.enemy.fetalSize >= MAX_FETAL_SIZE) {
+                    reason = 'Active Labor Prevents Further Fighting (Judge Decision)';
+                }
+                return { isOver: true, winner, reason };
+            }
+            return { isOver: false };
+          };
+
+          const finalizeStatePhase = (stateObj) => {
+              const isRoundEnd = stateObj.turn > TURNS_PER_ROUND;
+              const overCheck = checkGameOver(stateObj, isRoundEnd);
+              if (overCheck.isOver) {
+                  stateObj.phase = 'gameover';
+                  stateObj.winner = overCheck.winner;
+                  stateObj.log.push(`*** MATCH OVER: ${overCheck.reason} ***`);
+              } else if (isRoundEnd) {
+                  stateObj.phase = 'pitstop';
+                  stateObj.pitstopTurn = 1;
+                  if (stateObj.player.isDowned || stateObj.enemy.isDowned) {
+                      stateObj.log.push(`[INFO] The bell rings! Corner crews rush in and forcefully drag the exhausted fighters to their feet!`);
+                  } else {
+                      stateObj.log.push(`[INFO] The bell rings!`);
+                  }
+                  stateObj.player.isDowned = false; 
+                  stateObj.enemy.isDowned = false;
+                  stateObj.range = 1; 
+                  stateObj.player.movement = 'hold';
+                  stateObj.log.push(`--- END OF ROUND ${stateObj.round} ---`);
+                  stateObj.log.push("The degraded fighters collapse onto their stools for desperate, 2-turn maintenance.");
+              }
+              return stateObj;
+          };
+
+          const processMovement = (moverObj, movementType, currentRange, logs) => {
+              moverObj.isAdvancing = false;
+              if (movementType === 'hold') return currentRange;
+              
+              if (movementType === 'advance') {
+                  if (currentRange < 2) {
+                      moverObj.stamina = clamp(moverObj.stamina - 25, 0, MAX_STAMINA);
+                      moverObj.isAdvancing = true;
+                      const adj = moverObj.fetalSize >= 10 ? `roars, aggressively waddling her massive ${rand(T_BELLY)} forward` : (moverObj.fetalSize < 4 ? "explodes forward with lethal athletic speed" : "forces her heavy twin-bump forward, ignoring the sway of her hips");
+                      logs.push(`[MOVE] ${moverObj.name} ${adj}, leaving her guard completely open in her desperation! (-Defense)`);
+                      return currentRange + 1;
+                  }
+                  return currentRange;
+              }
+              
+              if (movementType === 'retreat') {
+                  if (currentRange > 0) {
+                      moverObj.stamina = clamp(moverObj.stamina - 35, 0, MAX_STAMINA);
+                      
+                      const rawRoll = Math.floor(Math.random() * 100) + 1;
+                      let mod = 0;
+                      mod -= Math.floor(moverObj.fetalSize * 3);
+                      mod -= Math.floor(moverObj.voluptuousness * 0.4);
+                      mod -= Math.floor(moverObj.strain * 0.3);
+                      
+                      const result = evaluateRoll(rawRoll, mod);
+                      if (result.isSuccess) {
+                          const adj = moverObj.fetalSize >= 10 ? `clumsily backs away, dragging her sloshing ${rand(T_BELLY)} in a frantic retreat` : (moverObj.fetalSize < 4 ? "executes a flawless tactical backstep" : `steps back, gritting her teeth as her dense ${rand(T_FAT)} slaps heavily together`);
+                          logs.push(`[MOVE] ${moverObj.name} ${adj}, successfully creating distance!`);
+                          return currentRange - 1;
+                      } else {
+                          const failReason = moverObj.fetalSize >= 10 ? `her massive, sloshing ${rand(T_BELLY)} completely anchors her in place!` : (moverObj.fetalSize < 4 ? "she misjudges her footing on the slick canvas!" : `she tries to disengage, but feels the horrifying drag of her dense new ${rand(T_FAT)} tripping her up!`);
+                          logs.push(`[MOVE FAILED] ${moverObj.name} desperately tries to retreat, but ${failReason}`);
+                          return currentRange; 
+                      }
+                  }
+                  return currentRange;
+              }
+              return currentRange;
+          };
+
+          const executeTurn = (playerActionId) => {
+            if (gameState.phase !== 'combat') return; 
+
+            let newState = JSON.parse(JSON.stringify(gameState));
+            let newLogs = [];
+
+            newState.player.isAdvancing = false;
+            newState.enemy.isAdvancing = false;
+
+            const isBellyBlocked = (newState.player.fetalSize + newState.enemy.fetalSize) >= 15;
+            
+            let playerAction;
+            if (newState.player.isDowned) {
+                playerAction = getDownedActions().find(a => a.id === playerActionId);
+            } else if (newState.enemy.isDowned) {
+                playerAction = getEnemyDownedActions().find(a => a.id === playerActionId);
+            } else {
+                playerAction = getActions(newState.player.fetalSize, newState.range, isBellyBlocked, newState.target).find(a => a.id === playerActionId);
+            }
+
+            const processAction = (action, attackerObj, defenderObj, attackerName, defenderName, defIsResting, actionTarget) => {
+              let newlyAgitated = false;
+              
+              if (action.type === 'wait') {
+                  attackerObj.stamina = clamp(attackerObj.stamina + action.val, 0, MAX_STAMINA);
+                  newLogs.push(`[TIME STOP] ${attackerName} rests on the ropes, catching her breath while watching the pathetic broodsow struggle on the mat. (+${action.val} Stamina). `);
+                  return { result: {isSuccess: true, id: 'SUCCESS'}, logStr: "", newlyAgitated: false };
+              }
+              if (action.type === 'taunt') {
+                  defenderObj.arousal = clamp(defenderObj.arousal + action.val, 0, MAX_AROUSAL);
+                  newLogs.push(`[TIME STOP] ${attackerName} mercilessly taunts the downed fighter! The deep humiliation severely spikes ${defenderName}'s heat! (+${action.val} Arousal). `);
+                  return { result: {isSuccess: true, id: 'SUCCESS'}, logStr: "", newlyAgitated: false };
+              }
+
+              const exertionCost = calcCost(action.cost, attackerObj.voluptuousness);
+              attackerObj.stamina = clamp(attackerObj.stamina - exertionCost, 0, MAX_STAMINA);
+
+              const rawRoll = Math.floor(Math.random() * 100) + 1;
+              const modifier = getRollModifier(action.type, attackerObj, defenderObj, action.id);
+              const result = evaluateRoll(rawRoll, modifier);
+              const vMult = defenderObj.stamina <= 0 ? 1.5 : 1.0; 
+              let logStr = generateActionText(result, action, attackerObj, defenderObj, defIsResting, actionTarget);
+
+              if (!result.isSuccess) {
+                if (action.type === 'strike' && attackerObj.voluptuousness >= 50 && attackerObj.strain >= 50) {
+                    const strainDmg = Math.floor(attackerObj.strain * 1.5) + 15;
+                    attackerObj.hp = clamp(attackerObj.hp - strainDmg, 0, MAX_HP);
+                    logStr += `(-${strainDmg} HP recoil). `;
+                }
+                if (action.type === 'heaveUp') {
+                    const strainDmg = Math.floor(attackerObj.strain * 1.0) + 20;
+                    attackerObj.hp = clamp(attackerObj.hp - strainDmg, 0, MAX_HP);
+                    attackerObj.stamina = clamp(attackerObj.stamina - 50, 0, MAX_STAMINA);
+                    logStr += `(-${strainDmg} HP from crushing joint stress). `;
+                }
+                if (result.id === 'CRIT_FAIL' && action.type !== 'rest' && action.type !== 'restDowned') {
+                    attackerObj.stamina = clamp(attackerObj.stamina - 40, 0, MAX_STAMINA); 
+                    logStr += `(-40 Extra Stamina loss). `;
+                }
+                newLogs.push(logStr);
+                return { result: result, logStr: logStr, newlyAgitated: newlyAgitated };
+              }
+
+              if (action.type === 'rest' || action.type === 'restDowned') {
+                const stamHeal = Math.floor(action.val * result.mult);
+                attackerObj.stamina = clamp(attackerObj.stamina + stamHeal, 0, MAX_STAMINA);
+                attackerObj.will = clamp(attackerObj.will + 20, 0, MAX_WILL);
+                newLogs.push(logStr + `(+${stamHeal} Stamina, +Will). `);
+              } 
+              else if (action.type === 'slowRise' || action.type === 'heaveUp') {
+                let prog = result.id === 'WEAK' ? (action.type==='slowRise'?1:2) : (action.type==='slowRise'?2:3);
+                attackerObj.recoveryProgress += prog;
+                newLogs.push(logStr + `(+${prog} Rise Progress). `);
+                
+                if (attackerObj.recoveryProgress >= attackerObj.recoveryThreshold) {
+                    attackerObj.isDowned = false;
+                    newLogs.push(`*** ${attackerName} finally manages to heave her extremely heavy, bloated incubator frame off the canvas! ***`);
+                } else {
+                    newLogs.push(`(${attackerObj.recoveryProgress} / ${attackerObj.recoveryThreshold} Success Points required to stand).`);
+                }
+              }
+              else if (action.type === 'strike') {
+                let baseDmg = Math.floor(action.val * result.mult * (defIsResting ? 0.5 : 1.0));
+                const muscleLossMult = Math.max(0.4, 1 - (attackerObj.voluptuousness / 150)); 
+                const powerLostPct = Math.floor((1 - muscleLossMult) * 100);
+                baseDmg = Math.floor(baseDmg * muscleLossMult);
+                
+                if (defenderObj.isDowned) baseDmg = Math.floor(baseDmg * 1.5);
+                if (defenderObj.isAdvancing) baseDmg = Math.floor(baseDmg * 1.25);
+                
+                if (actionTarget === 'tits') {
+                    baseDmg = Math.floor(baseDmg * 0.7);
+                    defenderObj.milk += Math.floor(action.val * 0.3);
+                    defenderObj.arousal += Math.floor(action.val * 0.2);
+                    logStr += `(+Milk Bloat, +Arousal). `;
+                } else if (actionTarget === 'belly') {
+                    baseDmg = Math.floor(baseDmg * 0.4);
+                    defenderObj.stamina = clamp(defenderObj.stamina - Math.floor(action.val * 0.8), 0, MAX_STAMINA);
+                    
+                    if (defIsResting) {
+                        logStr += `(Guard absorbs the shock! Belly protected! -Opponent Stamina). `;
+                    } else if (!defenderObj.agitatedThisRound) {
+                        defenderObj.agitationQueued = Math.max(defenderObj.agitationQueued, 1);
+                        defenderObj.agitatedThisRound = true;
+                        newlyAgitated = true;
+                        if (defenderObj.orgasmedThisRound) {
+                            logStr += `(Fetuses agitated, but eclipsed by her climax! -Opponent Stamina). `;
+                        } else {
+                            logStr += `(+Agitation, -Opponent Stamina). `;
+                        }
+                    } else {
+                        logStr += `(Fetuses already agitated this round! -Opponent Stamina). `;
+                    }
+                    
+                    if (!defIsResting) {
+                        defenderObj.effect = { type: 'agitate', turn: newState.turn + 1 }; 
+                    }
+                } else if (actionTarget === 'face' && action.id === 'jab' && !defIsResting) {
+                    defenderObj.isDistracted = true;
+                    logStr += `(Opponent Distracted!). `;
+                }
+
+                if (powerLostPct > 10 && !defIsResting) {
+                    logStr += rand([
+                        `Her cannibalized, doughy arms are completely robbed of athletic strength! The weak blow loses ${powerLostPct}% of its power, doing little more than bruising ${defenderName}'s squishy ${rand(T_FAT)}! `,
+                        `The demanding fetuses have stolen her muscular power! Her flabby punch loses ${powerLostPct}% of its force, merely stinging ${defenderName}'s heavy padding. `,
+                        `Her hormone-cooked body is meant for breeding, not fighting. The soft strike is weakened by ${powerLostPct}%, feeling like a pathetic, wet slap! `
+                    ]);
+                }
+                
+                defenderObj.hp -= baseDmg;
+                logStr += `(-${baseDmg} HP). `;
+                if (actionTarget !== 'belly') {
+                    defenderObj.effect = { type: result.id === 'CRIT_SUCCESS' ? 'crit' : 'hit', turn: newState.turn + 1 }; 
+                }
+                
+                if (actionTarget === 'belly' && defenderObj.fetalSize >= 8 && !defenderObj.isDowned && result.mult >= 1.0) {
+                    const incontChance = defenderObj.fetalSize >= 10 ? 0.60 : 0.35; 
+                    if (Math.random() < incontChance) { 
+                        defenderObj.stamina = clamp(defenderObj.stamina - 150, 0, MAX_STAMINA);
+                        logStr += `*** HUMILIATION! The brutal blow to her enormous ${rand(T_BELLY)} pulverizes her bladder! ${defenderName} helplessly wets the canvas, weeping in frustration! (-150 Stamina) *** `;
+                    }
+                }
+
+                const downThreshold = 300 + Math.floor(defenderObj.strain * 1.5); 
+                if (defenderObj.hp < downThreshold && result.mult >= 1.0 && !defenderObj.isDowned) {
+                    if (Math.random() * 100 < ((downThreshold - defenderObj.hp) / downThreshold) * 100) {
+                        newLogs.push(logStr);
+                        triggerKnockdown(defenderObj, newLogs, `*** KNOCKDOWN! ${defenderName}'s swollen, creaking ${rand(T_JOINTS)} finally ${rand(T_FLINCH)} under her massive weight!`);
+                        return { result: result, logStr: logStr, newlyAgitated: newlyAgitated }; 
+                    }
+                }
+                newLogs.push(logStr);
+              }
+              else if (action.type === 'arousal') {
+                let arousalDealt = Math.floor(action.val * result.mult * vMult);
+                if (defIsResting) arousalDealt = Math.floor(arousalDealt * 1.5); 
+                defenderObj.arousal += arousalDealt;
+                attackerObj.arousal += Math.floor(arousalDealt / 3); 
+                newLogs.push(logStr + `(+${arousalDealt} Arousal). `);
+              }
+
+              attackerObj.isDistracted = false; 
+              return { result: result, logStr: logStr, newlyAgitated: newlyAgitated };
+            };
+
+            const evaluateArousal = (fighter, logsArray, isRingActive) => {
+              fighter.arousal = clamp(fighter.arousal - 5, 0, MAX_AROUSAL); 
+
+              if (fighter.arousal >= 70) {
+                  if (!fighter.inHeat && !fighter.isDowned) {
+                      fighter.inHeat = true;
+                      logsArray.push(`*** SAVAGE HEAT! ${fighter.name}'s mind screams in trapped horror as her dripping, ruthlessly congested anatomy completely hijacks her nervous system, forcing her to violently rut! ***`);
+                  }
+              } else {
+                  if (fighter.inHeat) {
+                      fighter.inHeat = false;
+                      logsArray.push(`[INFO] ${fighter.name} gasps, regaining control of her mind as the feverish rut breaks.`);
+                  }
+              }
+
+              if (fighter.arousal > 50 && !isRingActive && fighter.hp > 0) {
+                  if (Math.random() * 100 < ((fighter.arousal - 50) / 50) * 75) {
+                      fighter.arousal = 0;
+                      fighter.hp = clamp(fighter.hp - 50, 0, MAX_HP);
+                      fighter.stamina = clamp(fighter.stamina - 100, 0, MAX_STAMINA);
+                      fighter.inHeat = false;
+                      fighter.isDistracted = false;
+                      
+                      let growthStr = "";
+                      if (!fighter.orgasmedThisRound) {
+                          fighter.agitationQueued = Math.max(fighter.agitationQueued, 2);
+                          fighter.orgasmedThisRound = true;
+                          growthStr = "(+2 Queued Fetal Growth)";
+                      } else {
+                          growthStr = "(Already climaxed this round! No extra fetal growth.)";
+                      }
+
+                      if (!fighter.isDowned) {
+                          triggerKnockdown(fighter, logsArray, `*** CLIMAX! ${fighter.name}'s furious edging breaks! The painful, humiliating intensity of emptying her backed-up balls into her shorts drops her to her knees! The violent spasming in her core actively agitates her male fetuses! ${growthStr} ***`);
+                      } else {
+                          fighter.recoveryProgress = 0; 
+                          logsArray.push(`*** CLIMAX! Writhing on the mat, the humiliating intensity of emptying her loaded balls shatters ${fighter.name}'s focus! The violent core spasms actively agitate the male fetuses, completely resetting her struggle to rise! ${growthStr} ***`);
+                      }
+                  }
+              }
+            };
+
+            // =====================================
+            // PLAYER RECOVERY TIME STOP
+            // =====================================
+            if (newState.player.isDowned) {
+                newState.player.refCount += 1;
+                newLogs.push(`[Count: ${newState.player.refCount}]`);
+                
+                if (playerAction) {
+                    processAction(playerAction, newState.player, newState.enemy, newState.player.name, newState.enemy.name, false, newState.target);
+                    evaluateArousal(newState.player, newLogs, false);
+                }
+
+                if (!newState.player.isDowned) {
+                    newLogs.push(`[INFO] ${newState.player.name} beats the count! Time resumes.`);
+                } else if (newState.player.refCount >= 10) {
+                    newState.phase = 'gameover';
+                    newState.winner = 'enemy';
+                    newLogs.push(`*** KO! ${newState.player.name} failed to beat the 10-count! Her ruined fuckmattress pornbody couldn't leave the mat! ***`);
+                }
+                
+                newState.log = [...newState.log, ...newLogs];
+                setGameState(newState);
+                return; 
+            }
+
+            // =====================================
+            // ENEMY RECOVERY TIME STOP (INTERACTIVE)
+            // =====================================
+            if (newState.enemy.isDowned) {
+                if (playerAction) {
+                    processAction(playerAction, newState.player, newState.enemy, newState.player.name, newState.enemy.name, false, newState.target);
+                }
+                
+                newState.enemy.refCount += 1;
+                newLogs.push(`[Count: ${newState.enemy.refCount}]`);
+                
+                const eActions = getDownedActions();
+                let eRecAct;
+                if (newState.enemy.stamina < 150) eRecAct = eActions.find(a => a.id === 'restDowned');
+                else if (newState.enemy.recoveryThreshold - newState.enemy.recoveryProgress >= 2 && newState.enemy.stamina > 300) {
+                    eRecAct = Math.random() > 0.4 ? eActions.find(a => a.id === 'heaveUp') : eActions.find(a => a.id === 'slowRise');
+                } else {
+                    eRecAct = eActions.find(a => a.id === 'slowRise');
+                }
+
+                processAction(eRecAct, newState.enemy, newState.player, newState.enemy.name, newState.player.name, true, 'belly');
+                evaluateArousal(newState.enemy, newLogs, false);
+
+                if (!newState.enemy.isDowned) {
+                    newLogs.push(`[INFO] ${newState.enemy.name} beats the count! Time resumes.`);
+                } else if (newState.enemy.refCount >= 10) {
+                    newState.phase = 'gameover';
+                    newState.winner = 'player';
+                    newLogs.push(`*** KO! Siobhan failed to beat the 10-count! Her bloated incubator frame couldn't leave the mat! ***`);
+                }
+                
+                newState.log = [...newState.log, ...newLogs];
+                setGameState(newState);
+                return; 
+            }
+
+            // =====================================
+            // NORMAL COMBAT RESUMES BELOW
+            // =====================================
+            
+            const triggerFlavor = (fighter, logsArray) => {
+                const validFlavors = FLAVOR_TEXTS.filter(ft => ft.cond(fighter));
+                if (validFlavors.length > 0 && Math.random() < 0.8) { 
+                    const chosen = rand(validFlavors);
+                    let prefix = chosen.type === 'warning' ? '[WARNING]' : '[FLAVOR]';
+                    logsArray.push(`${prefix} ${chosen.text.replace(/\{name\}/g, fighter.name)}`);
+                }
+            };
+            
+            triggerFlavor(newState.player, newLogs);
+            triggerFlavor(newState.enemy, newLogs);
+
+            const triggerInvoluntary = (fighter, logsArray) => {
+                if (Math.random() > 0.4) return; 
+                
+                let possible = [];
+                if (fighter.fetalSize >= 10) possible.push(`The massive ${rand(T_BRATS)} violently ${rand(T_BRAT_ACT)} against her flattened bladder. ${fighter.name} gasps, sobbing in furious humiliation as she involuntarily pisses a hot stream down her legs.`);
+                if (fighter.fetalSize >= 12) possible.push(`A violent Braxton Hicks contraction ripples across ${fighter.name}'s drum-tight ${rand(T_BELLY)}, forcing a guttural moan from her lips despite her desperate attempt to stay silent.`);
+                if (fighter.milk >= 60) possible.push(`${fighter.name} claps a hand over her mouth, but a filthy, hormone-drenched moan escapes anyway as hot milk suddenly sprays from her over-inflated ${rand(T_TITS)}.`);
+                if (fighter.voluptuousness >= 60) possible.push(`${fighter.name} attempts to shift her massive weight, but the agonizing friction of her intensely chafing, cellulite-choked ${rand(T_FAT)} makes her furiously whimper and stagger.`);
+                if (fighter.arousal >= 60 && !fighter.inHeat) possible.push(`A sudden, violent throb in her congested slit makes ${fighter.name} abruptly grind her incredibly fat thighs together. She bites her lip until it bleeds to stop the rutting.`);
+                if (fighter.arousal >= 80 && !fighter.inHeat) possible.push(`${fighter.name}'s dripping futa-meat bulges visibly through her soaked, ruined shorts. She punches her own thigh in sheer rage, completely betrayed by her fighting focus.`);
+                
+                if (fighter.fetalSize >= 9) {
+                    possible.push(`The sheer, unfair gravitational pull of ${fighter.name}'s low-slung ${rand(T_BELLY)} makes her spine pop audibly. She whines in pure agony, completely trapped in her own flesh.`);
+                    possible.push(`A massive, distinct hand pushes forcefully outward against the drum-tight skin of ${fighter.name}'s unbelievably heavy ${rand(T_BELLY)}, violently stretching her beyond human limits.`);
+                }
+
+                if (fighter.fetalSize >= 8 && fighter.voluptuousness < 90) {
+                    possible.push(`The massive, squirming fetuses forcefully feed on her athletic core! ${fighter.name} gasps, sobbing in furious humiliation as she physically feels her tight abs literally softening into dimpled, squishy ${rand(T_FAT)}.`);
+                    possible.push(`${fighter.name}'s incredibly heavy, overbred body betrays her! The greedy ${rand(T_BRATS)} eagerly consume her muscular strength, leaving her standing there as a panting, helpless piece of squishy broodsow meat.`);
+                }
+
+                if (possible.length > 0) {
+                    logsArray.push(`[FLAVOR] ${rand(possible)}`);
+                }
+            };
+
+            triggerInvoluntary(newState.player, newLogs);
+            triggerInvoluntary(newState.enemy, newLogs);
+
+            newState.playerLastAction = playerAction ? playerAction.type : 'none'; 
+
+            const eIsResting = false; 
+            let playerProcessResult = null;
+            if (playerAction && !playerAction.disabled && isActionValid(playerAction.id, newState.range, isBellyBlocked, newState.target)) {
+                playerProcessResult = processAction(playerAction, newState.player, newState.enemy, newState.player.name, newState.enemy.name, false, newState.target);
+            } else if (playerAction) {
+                newLogs.push(`[CRITICAL FAILURE] Out of position! ${newState.player.name} flails uselessly at the wrong range!`);
+                newState.player.stamina = clamp(newState.player.stamina - 40, 0, MAX_STAMINA);
+            }
+            
+            if (playerProcessResult && playerProcessResult.result && playerProcessResult.result.isSuccess && playerAction && playerAction.type === 'strike' && newState.target === 'belly' && !eIsResting && playerProcessResult.newlyAgitated) {
+                 newLogs[newLogs.length - 1] += rand([
+                     `The sloshed ${rand(T_BRATS)} angrily demand calories, violently venting potent cannibalizing hormones into her bloodstream! `,
+                     `The smacked male womb-bullies immediately trigger a massive hormonal dump, draining her muscle mass into dense feminine fat! `,
+                     `Agitated by the disturbance, the greedy male gestalts violently melt her hard muscles into squishy, heavy-bottomed ${rand(T_FAT)}! `,
+                     `Her agitated uterus floods her body with hormones as the engineered male litters demand immediate, catastrophic caloric sacrifice! `
+                 ]);
+            }
+
+            // Enemy AI Phase
+            if (newState.enemy.hp > 0 && !newState.enemy.isDowned && newState.player.hp > 0) {
+                let eTarget = rand(['face', 'tits', 'belly']);
+                let enemyMovement = 'hold';
+                let enemyActionId = 'brace';
+
+                if (newState.enemy.inHeat) {
+                    if (newState.range < 2) {
+                        enemyMovement = 'advance';
+                        enemyActionId = 'grapple';
+                    } else {
+                        enemyMovement = 'hold';
+                        enemyActionId = 'grapple';
+                    }
+                } else if (newState.enemy.stamina < 200) {
+                    enemyActionId = 'brace';
+                    if (newState.range === 2) enemyMovement = 'retreat';
+                } else {
+                    const attacks = ['jab', 'straight', 'hook', 'uppercut'];
+                    enemyActionId = rand(attacks);
+                    
+                    if ((enemyActionId === 'jab' || enemyActionId === 'straight') && newState.range === 2) {
+                        enemyMovement = 'retreat';
+                    } else if (enemyActionId === 'hook' && newState.range === 0) {
+                        enemyMovement = 'advance';
+                    } else if (enemyActionId === 'hook' && newState.range === 2) {
+                        enemyMovement = 'retreat';
+                    } else if (enemyActionId === 'uppercut' && newState.range < 2) {
+                        enemyMovement = 'advance';
+                    } else {
+                        enemyMovement = 'hold';
+                    }
+                }
+
+                newState.range = processMovement(newState.enemy, enemyMovement, newState.range, newLogs);
+                
+                const eActionObj = getActions(newState.enemy.fetalSize, newState.range, isBellyBlocked, eTarget).find(a => a.id === enemyActionId);
+                const pIsResting = playerAction && playerAction.type === 'rest';
+
+                if (eActionObj && isActionValid(eActionObj.id, newState.range, isBellyBlocked, eTarget)) {
+                    processAction(eActionObj, newState.enemy, newState.player, newState.enemy.name, newState.player.name, pIsResting, eTarget);
+                } else {
+                    newLogs.push(`[CRITICAL FAILURE] Out of position! ${newState.enemy.name} flails uselessly at the wrong range!`);
+                    newState.enemy.stamina = clamp(newState.enemy.stamina - 40, 0, MAX_STAMINA);
+                }
+            }
+
+            evaluateArousal(newState.player, newLogs, false);
+            evaluateArousal(newState.enemy, newLogs, false);
+
+            const applyPassives = (fighterObj, logsArray) => {
+              fighterObj.milk += 8;
+              fighterObj.arousal += Math.floor(fighterObj.milk / 15); 
+              fighterObj.hp -= Math.floor(fighterObj.milk / 4); 
+              
+              const fetusWeight = calcFetusWeight(fighterObj.fetalSize);
+              const massDrain = Math.floor(fighterObj.voluptuousness / 2) + Math.floor(fetusWeight / 3);
+              fighterObj.stamina -= massDrain; 
+              
+              if (fighterObj.fetalSize >= 6 && !fighterObj.isDowned) {
+                  const fatGain = Math.floor(fighterObj.fetalSize / 4);
+                  fighterObj.voluptuousness = clamp(fighterObj.voluptuousness + fatGain, 0, MAX_VOLUPTUOUSNESS);
+                  
+                  if (Math.random() > 0.85) {
+                      fighterObj.effect = { type: 'agitate', turn: newState.turn + 1 }; 
+                      const muscleMelts = [
+                          `The greedy ${rand(T_BRATS)} inside ${fighterObj.name} ruthlessly steal her strength mid-fight! Her hard muscle actively melts to feed them, dumping the excess calories into soft, squishy padding on her hips and chest!`,
+                          `Biological theft! The demanding ${rand(T_BRATS)} actively strip-mine ${fighterObj.name}'s athletic core, dissolving her lean muscle into deeply humiliating ${rand(T_FAT)} just to sustain their massive growth!`,
+                          `${fighterObj.name} gasps as a violent hormonal spike forces her body to prioritize the pregnancy! Her hard-won muscle rapidly cannibalizes itself, softening into heavy, estrogenic ${rand(T_FAT)} to feed the ${rand(T_BRATS)}!`,
+                          `A sickening rush of heat floods ${fighterObj.name}'s limbs as the massive ${rand(T_BRATS)} aggressively demand calories! She literally feels her fighting strength melting into jiggly, yielding ${rand(T_SOFT)}!`,
+                          `Traitorous biology! To satisfy the squirming ${rand(T_BRATS)}, ${fighterObj.name}'s own metabolism violently breaks down her athletic power, aggressively packing thick, grab-able ${rand(T_FAT)} onto her frame right before your eyes!`
+                      ];
+                      logsArray.push(`[WARNING] ${rand(muscleMelts)} (+Fat, -Muscle)`);
+                  }
+              }
+              
+              if (fighterObj.fetalSize >= 10 && Math.random() > 0.8 && !fighterObj.isDowned) {
+                  logsArray.push(`[WARNING] Hefting the violently heavy, squirming ${rand(T_BRATS)} is physically crushing ${fighterObj.name}'s spine, passively draining her stamina!`);
+              }
+            };
+          
+            if(newState.player.hp > 0 && newState.phase !== 'gameover') applyPassives(newState.player, newLogs);
+            if(newState.enemy.hp > 0 && newState.phase !== 'gameover') applyPassives(newState.enemy, newLogs);
+
+            newState.player.stamina = clamp(newState.player.stamina, 0, MAX_STAMINA);
+            newState.enemy.stamina = clamp(newState.enemy.stamina, 0, MAX_STAMINA);
+            newState.player.hp = clamp(newState.player.hp, 0, MAX_HP);
+            newState.enemy.hp = clamp(newState.enemy.hp, 0, MAX_HP);
+            newState.player.arousal = clamp(newState.player.arousal, 0, MAX_AROUSAL);
+            newState.enemy.arousal = clamp(newState.enemy.arousal, 0, MAX_AROUSAL);
+            newState.player.milk = clamp(newState.player.milk, 0, MAX_MILK);
+            newState.enemy.milk = clamp(newState.enemy.milk, 0, MAX_MILK);
+
+            newState.log = [...newState.log, ...newLogs];
+            newState.turn += 1;
+
+            // ==========================================
+            // DEFIANCE INTERRUPT EVALUATION (WILLPOWER)
+            // ==========================================
+            
+            const playerDownedThisTurn = newState.player.isDowned && !gameState.player.isDowned;
+            const playerHeatThisTurn = newState.player.inHeat && !gameState.player.inHeat;
+            const playerClimaxedThisTurn = newState.player.arousal === 0 && gameState.player.arousal > 50 && newState.player.stamina < gameState.player.stamina && newLogs.some(l => l.includes('CLIMAX!'));
+
+            if (playerDownedThisTurn && gameState.player.will >= 30) {
+                const aState = JSON.parse(JSON.stringify(newState));
+                aState.player.isDowned = false;
+                aState.player.downs -= 1;
+                aState.player.will -= 30;
+                aState.log.push(`*** DEFIANCE! You burn 30 Willpower! With an agonized scream, you lock your violently swollen ${rand(T_JOINTS)} and refuse to hit the mat! ***`);
+                
+                newState.phase = 'interrupt';
+                newState.interrupt = {
+                    title: "CRITICAL JOINT FAILURE",
+                    text: `Your ${rand(T_JOINTS)} buckle painfully under the immense, shifting weight of the ${rand(T_BRATS)}. You are falling to the canvas!`,
+                    action: "Lock Knees & Stand",
+                    cost: 30,
+                    acceptState: finalizeStatePhase(aState),
+                    declineState: finalizeStatePhase(JSON.parse(JSON.stringify(newState)))
+                };
+                setGameState(newState);
+                return;
+            } 
+            else if (playerClimaxedThisTurn && gameState.player.will >= 40) {
+                const aState = JSON.parse(JSON.stringify(newState));
+                aState.player.hp = clamp(aState.player.hp + 50, 0, MAX_HP);
+                aState.player.stamina = clamp(aState.player.stamina + 100, 0, MAX_STAMINA);
+                if (!gameState.player.orgasmedThisRound) {
+                    aState.player.agitationQueued = Math.max(0, aState.player.agitationQueued - 2);
+                    aState.player.orgasmedThisRound = false;
+                }
+                aState.player.arousal = 65; 
+                aState.player.will -= 40;
+                aState.log.push(`*** DEFIANCE! You burn 40 Willpower! You bite your lip until it bleeds, violently clamping your hips together to forcefully deny the humiliating climax! You are edging on the absolute brink! ***`);
+                
+                newState.phase = 'interrupt';
+                newState.interrupt = {
+                    title: "SENSORY OVERLOAD",
+                    text: `Your heavily congested futa-meat violently throbs! The agonizing pressure of your backed-up seed is forcing an explosive, stamina-draining climax right here on the mat!`,
+                    action: "Clench Hips & Edge",
+                    cost: 40,
+                    acceptState: finalizeStatePhase(aState),
+                    declineState: finalizeStatePhase(JSON.parse(JSON.stringify(newState)))
+                };
+                setGameState(newState);
+                return;
+            }
+            else if (playerHeatThisTurn && gameState.player.will >= 20) {
+                const aState = JSON.parse(JSON.stringify(newState));
+                aState.player.inHeat = false;
+                aState.player.arousal = 60;
+                aState.player.will -= 20;
+                aState.log.push(`*** DEFIANCE! You burn 20 Willpower! You punch your own squishy thigh in pure spite, snapping your preggo-brain out of the hormonal rut! ***`);
+                
+                newState.phase = 'interrupt';
+                newState.interrupt = {
+                    title: "ENDOCRINE OVERRIDE",
+                    text: `Your preggo-brain is melting into pure Savage Heat. The overwhelming lust is forcing your heavy hips to involuntarily rut!`,
+                    action: "Bite Lip & Suppress",
+                    cost: 20,
+                    acceptState: finalizeStatePhase(aState),
+                    declineState: finalizeStatePhase(JSON.parse(JSON.stringify(newState)))
+                };
+                setGameState(newState);
+                return;
+            }
+
+            setGameState(finalizeStatePhase(newState));
+          };
+
+          const handleEpilogueChoice = (choiceId) => {
+            setGameState({ ...gameState, epilogueStep: choiceId });
+          };
+
+          const executePitStop = (choice) => {
+            if (gameState.phase !== 'pitstop') return;
+            let newState = { ...gameState };
+              
+              if (newState.pitstopTurn === 1) {
+                  newState.player.downs = 0;
+                  newState.enemy.downs = 0;
+              }
+
+              let pRingActive = false;
+              let eRingActive = false;
+
+              if (choice === 'feed') {
+                newState.player.hp = clamp(newState.player.hp + 250, 0, MAX_HP);
+                newState.player.stamina = clamp(newState.player.stamina + 300, 0, MAX_STAMINA);
+                newState.player.voluptuousness = clamp(newState.player.voluptuousness + 3, 0, MAX_VOLUPTUOUSNESS);
+                newState.player.strain = clamp(newState.player.strain + 2, 0, MAX_STRAIN);
+                newState.log.push(getPitstopLog('feed', newState.player));
+              } else if (choice === 'ring') {
+                pRingActive = true;
+                newState.log.push(getPitstopLog('ring', newState.player));
+              } else if (choice === 'pump') {
+                newState.player.milk = 0;
+                newState.player.hp = clamp(newState.player.hp + 200, 0, MAX_HP);
+                newState.player.arousal += 15;
+                newState.log.push(getPitstopLog('pump', newState.player));
+              } else if (choice === 'bladder') {
+                newState.player.stamina = clamp(newState.player.stamina + 200, 0, MAX_STAMINA);
+                newState.log.push(getPitstopLog('bladder', newState.player));
+              }
+
+              let enemyChoice = 'feed';
+              if (newState.enemy.arousal > 80) enemyChoice = 'ring';
+              else if (newState.enemy.stamina < 300) enemyChoice = 'bladder';
+              else if (newState.enemy.milk > 60) enemyChoice = 'pump';
+              
+              if (enemyChoice === 'feed') {
+                  newState.enemy.hp = clamp(newState.enemy.hp + 250, 0, MAX_HP);
+                  newState.enemy.stamina = clamp(newState.enemy.stamina + 300, 0, MAX_STAMINA);
+                  newState.enemy.voluptuousness = clamp(newState.enemy.voluptuousness + 3, 0, MAX_VOLUPTUOUSNESS);
+                  newState.enemy.strain = clamp(newState.enemy.strain + 2, 0, MAX_STRAIN);
+                  newState.log.push(getPitstopLog('feed', newState.enemy));
+              } else if (enemyChoice === 'ring') {
+                  eRingActive = true;
+                  newState.log.push(getPitstopLog('ring', newState.enemy));
+              } else if (enemyChoice === 'pump') { 
+                  newState.enemy.milk = 0; 
+                  newState.enemy.hp = clamp(newState.enemy.hp + 200, 0, MAX_HP);
+                  newState.enemy.arousal += 15;
+                  newState.log.push(getPitstopLog('pump', newState.enemy));
+              } else if (enemyChoice === 'bladder') {
+                  newState.enemy.stamina = clamp(newState.enemy.stamina + 200, 0, MAX_STAMINA);
+                  newState.log.push(getPitstopLog('bladder', newState.enemy));
+              }
+
+              evaluateArousal(newState.player, newState.log, pRingActive);
+              evaluateArousal(newState.enemy, newState.log, eRingActive);
+
+              if (newState.pitstopTurn >= 2) {
+                  const applyGestation = (fighterObj, name) => {
+                    const queued = fighterObj.agitationQueued;
+                    fighterObj.fetalSize += 1.0 + queued;
+                    let addedSize = 1.0 + queued;
+                    fighterObj.agitationQueued = 0;
+                    
+                    const volGain = Math.floor(addedSize * (6 + Math.random() * 5)); 
+                    const strainGain = Math.floor(addedSize * (4 + Math.random() * 5)); 
+                    fighterObj.voluptuousness += volGain;
+                    fighterObj.strain += strainGain;
+                    
+                    let msg = "";
+                    if (queued === 0) {
+                        msg = rand([
+                            `${name} suffers her natural +1 Month fetal growth. Her engineered male parasites demand calories, slowly cannibalizing her muscle to fuel their growth and dumping the excess into soft, dense fat on her hips and tits (+${volGain} Voluptuousness). Her ${rand(T_JOINTS)} buckle slightly under the new meat (+${strainGain} Strain).`,
+                            `Time marches on, forcing ${name}'s body through another natural +1 Month of pregnancy. The male fetuses drain her energy, packing on more heavy, squishy ${rand(T_FAT)} straight onto her extreme hourglass frame (+${volGain} Voluptuousness) as her aching knees pop (+${strainGain} Strain).`
+                        ]);
+                    } else if (queued <= 2) {
+                        msg = rand([
+                            `${name} suffers natural +1 Month growth, but the sloshed hormones violently vent! The testy male ${rand(T_BRATS)} force an additional +${queued} Months! They demand massive calories, melting her muscle and aggressively forcing an extreme, heavy-bottomed hourglass frame (+${volGain} Voluptuousness) and her joints groan under the sudden weight (+${strainGain} Strain).`
+                        ]);
+                    } else if (queued <= 4) {
+                        msg = rand([
+                            `CATASTROPHIC GROWTH! ${name}'s battered womb dumps massive amounts of raw hormones as the male fetuses aggressively demand calories! Along with her natural +1 Month, she instantly swells by +${queued} extra Months! Her muscle is instantly cannibalized, the excess calories violently expanding her tits and thighs into a heavy, leaking fuckmattress pornbody (+${volGain} Voluptuousness)! Her skeleton shrieks in agony (+${strainGain} Strain)!`
+                        ]);
+                    } else {
+                        msg = rand([
+                            `BIOLOGICAL DEFEAT! ${name}'s preggo-brain and battered womb completely overflow with pure, unadulterated breeding hormones! The genetically engineered male fetuses demand total caloric sacrifice! Adding to the natural +1 Month, her violently overstuffed belly expands by a shamelessly massive +${queued} Months! Her athletic muscle is completely erased, replaced by a highly titillating, extreme hourglass figure packed with dense, meaty breederfat on her hips and chest (+${volGain} Voluptuousness)! Her joints practically shatter (+${strainGain} Strain)!`
+                        ]);
+                    }
+                    newState.log.push(msg);
+                    
+                    fighterObj.fetalSize = clamp(fighterObj.fetalSize, 1.0, MAX_FETAL_SIZE);
+                    fighterObj.voluptuousness = clamp(fighterObj.voluptuousness, 0, MAX_VOLUPTUOUSNESS);
+                    fighterObj.strain = clamp(fighterObj.strain, 0, MAX_STRAIN);
+                    fighterObj.agitatedThisRound = false;
+                    fighterObj.orgasmedThisRound = false;
+                  };
+
+                  applyGestation(newState.player, newState.player.name);
+                  applyGestation(newState.enemy, newState.enemy.name);
+
+                  newState.round += 1;
+                  newState.turn = 1;
+                  
+                  const overCheck = checkGameOver(newState, false);
+                  if (overCheck.isOver) {
+                      newState.phase = 'gameover';
+                      newState.winner = overCheck.winner;
+                      newState.log.push(`*** MATCH OVER: ${overCheck.reason} ***`);
+                  } else {
+                      newState.phase = 'combat';
+                      newState.log.push(`--- ROUND ${newState.round} BEGINS ---`);
+                      if (newState.player.fetalSize >= MAX_FETAL_SIZE || newState.enemy.fetalSize >= MAX_FETAL_SIZE) {
+                          newState.log.push(`*** WARNING: Braxton Hicks contractions detected! This is the FINAL ROUND before labor forces a stoppage! ***`);
+                      }
+                  }
+              } else {
+                  newState.pitstopTurn += 1;
+              }
+              setGameState(newState);
+            };
+
+          const isFinalRound = gameState.player.fetalSize >= 12 || gameState.enemy.fetalSize >= 12;
+          const rangeText = gameState.range === 0 ? "LONG RANGE (Poking Distance)" : gameState.range === 1 ? "MEDIUM RANGE (Striking Distance)" : "CLOSE RANGE (Clinch/Belly Bump)";
+
+          let projectedRange = gameState.range;
+          if (!gameState.player.isDowned && !gameState.enemy.isDowned) {
+              if (gameState.movement === 'advance' && gameState.range < 2) projectedRange += 1;
+              if (gameState.movement === 'retreat' && gameState.range > 0) projectedRange -= 1;
+          }
+
+          return (
+            <div className="min-h-screen bg-neutral-950 text-gray-200 font-sans p-2 md:p-6 flex flex-col max-w-6xl mx-auto"
+                 style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #2a1122 0%, #000000 100%)' }}>
+                 
+              <div className={`fixed inset-0 z-50 pointer-events-none transition-opacity duration-1000 ${gameState.player.hp < 250 && gameState.player.hp > 0 && gameState.phase === 'combat' ? 'animate-critical-hp opacity-100' : 'opacity-0'}`}></div>
+              
+              {/* DEFIANCE INTERRUPT MODAL */}
+              {gameState.phase === 'interrupt' && gameState.interrupt && (
+                <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                   <div className="bg-neutral-900 border border-purple-500 rounded-lg max-w-lg w-full p-6 shadow-[0_0_40px_purple]">
+                       <h2 className="text-2xl md:text-3xl font-black text-purple-400 uppercase tracking-widest mb-4 animate-pulse">
+                          {gameState.interrupt.title}
+                       </h2>
+                       <p className="text-gray-200 mb-8 italic text-lg leading-relaxed border-l-4 border-purple-500 pl-4 bg-purple-900/10 py-2">
+                          "{gameState.interrupt.text}"
+                       </p>
+                       <div className="flex flex-col gap-4">
+                           <button onClick={() => setGameState(gameState.interrupt.acceptState)} 
+                                   className="bg-purple-900/80 hover:bg-purple-600 text-white font-black py-4 px-6 rounded border border-purple-400 uppercase tracking-widest flex justify-between items-center transition-all shadow-[0_0_15px_rgba(147,51,234,0.5)]">
+                               <span>{gameState.interrupt.action}</span>
+                               <span className="text-purple-200 text-sm border border-purple-400/50 px-2 py-1 bg-black/40 rounded">- {gameState.interrupt.cost} Willpower</span>
+                           </button>
+                           <button onClick={() => setGameState(gameState.interrupt.declineState)} 
+                                   className="bg-gray-900 hover:bg-gray-800 text-gray-400 py-3 px-6 rounded border border-gray-700 uppercase tracking-widest text-sm transition-all">
+                               Submit to your body (Save Will)
+                           </button>
+                       </div>
+                   </div>
+                </div>
+              )}
+
+              <header className="text-center mb-4 border-b border-pink-900/50 pb-4 relative z-10">
+                <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-purple-600 tracking-tighter uppercase">
+                  Fertility Fights
+                </h1>
+                <p className="text-pink-400/70 text-xs tracking-widest font-mono mt-1 mb-2">THE UNDERHIVE PITS</p>
+                
+                {gameState.phase !== 'menu' && gameState.phase !== 'intro' && (
+                  <div className="mt-3 inline-flex flex-col items-center">
+                     <div className="bg-black/80 px-4 md:px-6 py-2 rounded-full border border-pink-900/50 shadow-[0_0_10px_rgba(255,0,128,0.2)] mb-2">
+                      {gameState.phase === 'pitstop' ? (
+                        <span className="font-bold text-pink-500 text-sm tracking-wider animate-pulse">PIT STOP - TURN {gameState.pitstopTurn}/2</span>
+                      ) : (
+                        <>
+                          <span className="font-bold text-gray-400 text-sm tracking-wider">ROUND <span className="text-white text-lg">{gameState.round}</span> / {MAX_ROUNDS}</span>
+                          <span className="mx-3 text-pink-700">|</span>
+                          <span className="font-bold text-gray-400 text-sm tracking-wider">TURN <span className="text-white text-lg">{gameState.turn}</span> / {TURNS_PER_ROUND}</span>
+                        </>
+                      )}
+                    </div>
+                    {gameState.phase === 'combat' && (
+                        <div className="text-yellow-500 font-black tracking-widest uppercase border border-yellow-600/50 bg-yellow-900/20 px-4 py-1 rounded">
+                            {rangeText}
+                        </div>
+                    )}
+                    {isFinalRound && gameState.phase !== 'pitstop' && (
+                        <div className="mt-2 text-red-500 font-black text-xs md:text-sm animate-pulse uppercase tracking-widest bg-red-900/20 px-4 py-1 rounded">
+                            FINAL ROUND (LABOR IMMINENT)
+                        </div>
+                    )}
+                  </div>
+                )}
+              </header>
+
+              {gameState.phase === 'intro' && (
+                <div className="flex-1 flex flex-col items-center justify-center relative overflow-y-auto h-full rounded-lg border-2 border-red-900/30 bg-black p-4 md:p-8 z-10">
+                    <div className="z-10 w-full max-w-3xl text-center text-gray-400 font-mono tracking-wide text-sm md:text-lg leading-relaxed space-y-6">
+                        <h2 className="font-black text-red-700 text-4xl md:text-5xl mb-8 tracking-tighter border-b border-red-900/50 pb-4">FERTILITY FIGHTS: REGULATION 88.4</h2>
+                        <p>The year is 2142. The hyper-corporate dystopia of the Underhive demands two things: bloody entertainment, and an endless supply of breeding stock.</p>
+                        <p>Welcome to the Penal Arena.</p>
+                        <p>Here, the subjugated futanari underclass is put to use as both spectacle and cattle. The citizenry—male and female alike—deeply resent the futanari for being naturally tall, beautiful, muscular, and sexually virile. They take a sick, roaring glee in watching these proud, lethal warriors brought low, degraded into fat-titted, groaning incubators for their amusement.</p>
+                        <p>You step into the ring with a hard, toned, athletic body... but the syndicate ensures no one leaves the way they entered.</p>
+                        <p>Pumped full of experimental hucow hormones and aggressive seed engineered to rapidly gestate big, healthy male fetuses, fighters are forced to battle to complete physical ruination. As they violently batter each other's bellies, the trauma severely agitates the growing male fetuses.</p>
+                        <p>Engineered to survive, these disturbed parasites immediately "demand" calories, venting potent hormones into the futanari's bloodstream. This violently drains their lean muscle mass, using it to fuel their own rapid, macrosomic growth, while dumping the excess calories directly into the futanari's breasts, hips, and thighs. They are biologically forced into an extreme, highly sexualized hourglass figure—an all-natural fuckmattress pornbody designed to titillate the jaded, perverse audience.</p>
+                        <p className="text-red-500 font-bold italic pt-4">There is no graceful defeat. You will fight until your creaking joints buckle, your massively bloated milkers drag you to the canvas, and your exhausted, overbred body fully surrenders to its new role as a groaning broodsow.</p>
+                    </div>
+                    <button 
+                        onClick={() => setGameState({...gameState, phase: 'menu'})}
+                        className="mt-12 z-20 px-10 py-4 bg-gradient-to-b from-red-900 to-black hover:from-red-800 hover:to-red-950 border border-red-700 text-red-300 hover:text-white font-black tracking-widest uppercase transition-all rounded shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)]"
+                    >
+                        Enter the Penal Arena
+                    </button>
+                </div>
+              )}
+
+              {gameState.phase === 'menu' && (
+                <div className="flex-1 flex flex-col items-center justify-center max-w-4xl mx-auto w-full p-2 md:p-4 z-10">
+                  <div className="w-full bg-neutral-950 border-2 border-red-900/40 rounded-lg p-5 md:p-8 shadow-[0_0_25px_rgba(220,38,38,0.1)] text-left font-mono relative overflow-hidden">
+                      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,0,0,0.03)_1px,transparent_1px)] bg-[length:100%_4px] pointer-events-none"></div>
+                      
+                      <h2 className="text-xl md:text-3xl font-black text-red-600 mb-6 border-b border-red-900/50 pb-3 tracking-widest uppercase flex items-center relative z-10">
+                          <span className="inline-block w-3 h-3 bg-red-600 rounded-full animate-pulse mr-3"></span>
+                          Medical Dossier: Subject Degradation Protocols
+                      </h2>
+
+                      <div className="mb-6 relative z-10">
+                  <h3 className="text-red-400 font-bold mb-2 uppercase text-xs md:text-sm tracking-wider bg-red-900/20 inline-block px-2 py-1 border border-red-900/30">>> Administered Injection Load</h3>
+                  <ul className="list-disc list-inside text-gray-400 text-xs md:text-sm space-y-3 pl-2 md:pl-4 mt-3">
+                      <li><span className="text-red-300 font-bold">Synthetic Male Gametes (Strain 88.4):</span> Artificially inseminated via pre-match catheterization. Genetically engineered for hyper-motility and immediate, aggressive implantation upon initial physical exertion. Formulated to rapidly gestate demanding, macrosomic male subjects.</li>
+                      <li><span className="text-red-300 font-bold">Trauma-Linked Gestation Accelerant:</span> A proprietary biochemical agent that binds fetal development directly to adrenaline spikes and localized abdominal trauma. Every physical blow suffered by the host mathematically advances the pregnancy by a factor of months.</li>
+                      <li><span className="text-red-300 font-bold">Hucow-Variant Prolactin Stimulant:</span> A brutal glandular override targeting the host's firm pectoral tissue. It forcibly initiates extreme lactation, aggressively expanding the mammary glands to painful proportions to ensure a constant supply of highly caloric colostrum.</li>
+                      <li><span className="text-red-300 font-bold">Metabolic Cannibalization Catalyst:</span> A specialized hormone trigger designed to prioritize fetal safety over host mobility. It actively dissolves the host's high-density athletic muscle mass, metabolizing it to fuel rapid fetal growth and dumping the excess calories into dense, heavy, highly estrogenic fat deposits strictly distributed to the host's hips, thighs, and breasts.</li>
+                  </ul>
+              </div>
+
+              <div className="mb-6 relative z-10 bg-black/40 p-4 border border-red-900/20 rounded">
+                          <h3 className="text-red-400 font-bold mb-3 uppercase text-xs md:text-sm tracking-wider bg-red-900/20 inline-block px-2 py-1 border border-red-900/30">>> Projected Biological Humiliation (Mechanics)</h3>
+                          <div className="space-y-4 text-xs md:text-sm text-gray-400 leading-relaxed">
+                              <p><strong className="text-fuchsia-500 tracking-wider">FETAL SIZE (The Parasites):</strong> "Welcome to mommyhood. The grueling weight of those macrosomic boy fetuses is going to completely ruin your center of gravity, heavily penalizing your strikes and movement. And the best part? All that weight bears down directly on your prostate, putting constant, agonizing pelvic pressure on your involuntarily force-erected futa-meat. Let's see how well you fight when you're heavily pregnant and painfully hard."</p>
+                              
+                              <p><strong className="text-pink-500 tracking-wider">VOLUPTUOUSNESS (Breederfat):</strong> "Say goodbye to those abs, sweetheart. To protect the boys, your body is going to panic and pack on thick, dense squish in the most degrading places. The hormones force an extreme, obscenely sexual hourglass shape—bloating your tits to massive proportions and packing hefty, dimpled meat onto your wide birthing hips and plush thighs. This suffocating padding permanently spikes your stamina exertion and ruins your ability to catch your breath—though it does act as fleshy armor against blunt force."</p>
+                              
+                              <p><strong className="text-yellow-500 tracking-wider">STRAIN (Joint Pulverization):</strong> "Your skeleton isn't built for mommyhood. The massive, rapid weight gain is going to crush your joints. High strain destroys your ability to hold a defensive guard, drastically lowers your knockdown threshold, and causes excruciating recoil damage to your own knees when your clumsy punches miss."</p>
+                              
+                              <p><strong className="text-gray-300 tracking-wider">MILK BLOAT (Slosh Balloons):</strong> "Your firm pectorals are going to swell into painfully heavy, sloshing balloons. You studs are going to be leaking warm cream all over the canvas. The sheer discomfort, bloating, and stamina loss of hefting and jostling your own drooling milkers penalizes all striking momentum, and constantly drains your health. Oh, and all that sloshing friction is highly prone to causing involuntary arousal."</p>
+                              
+                              <p><strong className="text-red-500 tracking-wider">AROUSAL (The Edging Threat):</strong> "Keep your hands to yourself... or don't. We love watching you squirm. Hitting 70 Arousal melts your preggo-brain into <span className="text-purple-400 font-bold">SAVAGE HEAT</span>, forcing you to lose control and rut. And if you break and climax? The violent spasming in your core actively agitates your fetuses for massive growth, on top of the painful, humiliating intensity of emptying your desperately backed-up balls right into your shorts."</p>
+                          </div>
+                      </div>
+
+                      <div className="mb-6 relative z-10">
+                          <h3 className="text-green-500 font-bold mb-2 uppercase text-xs md:text-sm tracking-wider bg-green-900/20 inline-block px-2 py-1 border border-green-900/30">>> Nurse's Survival 'Tips'</h3>
+                          <ul className="list-square list-inside text-gray-400 text-xs md:text-sm space-y-2 pl-2 md:pl-4 mt-2">
+                              <li><strong className="text-green-400">TACTICS:</strong> "Manage your distance. Jabs and Straights are for Long/Medium Range. Hooks at Medium. Uppercuts and Grapples at Close. Not that your heavy-bottomed body will let you move gracefully for long."</li>
+                              <li><strong className="text-green-400">TARGETING:</strong> "Face for damage, Tits to spike their milk and heat, Belly to drain their stamina and agitate the boys. Punch an overdue belly hard enough, and she might just wet herself in front of everyone."</li>
+                              <li><strong className="text-purple-400">DEFIANCE (WILLPOWER):</strong> "When your ruined body forces a knockdown, climax, or heat, use your Willpower to aggressively interrupt and override it. Restore Willpower by using a Tight Guard."</li>
+                          </ul>
+                      </div>
+
+                      <div className="text-center mt-6 border-t border-red-900/50 pt-6 relative z-10">
+                          <button 
+                            onClick={startGame}
+                            className="px-6 md:px-10 py-3 md:py-4 bg-red-900/20 hover:bg-red-800/40 border border-red-600 text-red-500 hover:text-white font-black uppercase tracking-widest transition-all rounded shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)]"
+                          >
+                            [ Acknowledge & Initiate Match ]
+                          </button>
+                      </div>
+                  </div>
+                </div>
+              )}
+
+              {(gameState.phase === 'combat' || gameState.phase === 'pitstop' || gameState.phase === 'gameover' || gameState.phase === 'interrupt') && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 z-10">
+                  <FighterCard data={gameState.player} isPlayer={true} currentTurn={gameState.turn} />
+                  <FighterCard data={gameState.enemy} isPlayer={false} currentTurn={gameState.turn} />
+
+                  <div className="lg:col-span-2 bg-black/80 border border-gray-800 rounded-lg p-3 md:p-4 h-64 overflow-y-auto font-mono text-[11px] md:text-sm shadow-inner flex flex-col">
+                    {gameState.log.map((entry, idx) => {
+                      let color = 'text-gray-300 border-gray-700';
+                      if (entry.includes('[WARNING]')) color = 'text-orange-400 border-orange-700 font-bold bg-orange-900/20';
+                      else if (entry.includes('[FLAVOR]')) color = 'text-purple-300 italic border-purple-800/40 bg-purple-900/10';
+                      else if (entry.includes('[INFO]') || entry.includes('[TIME STOP]')) color = 'text-orange-300 border-orange-800 font-bold bg-orange-900/20';
+                      else if (entry.includes('[Count:')) color = 'text-yellow-300 border-yellow-600 font-bold';
+                      else if (entry.includes('[CRITICAL SUCCESS]')) color = 'text-green-400 border-green-600 font-bold';
+                      else if (entry.includes('[SUCCESS]')) color = 'text-blue-300 border-blue-600';
+                      else if (entry.includes('[WEAK SUCCESS]')) color = 'text-yellow-400 border-yellow-600';
+                      else if (entry.includes('[FAILURE]')) color = 'text-gray-500 border-gray-600';
+                      else if (entry.includes('[CRITICAL FAILURE]')) color = 'text-red-500 border-red-800 font-bold';
+                      else if (entry.includes('*** HUMILIATION')) color = 'text-yellow-400 border-yellow-800 font-bold bg-yellow-900/20';
+                      else if (entry.includes('*** SAVAGE HEAT')) color = 'text-purple-400 border-purple-800 font-bold bg-purple-900/20';
+                      else if (entry.includes('*** DEFIANCE')) color = 'text-purple-300 border-purple-500 font-bold bg-purple-900/30 text-base py-2';
+                      else if (entry.includes('***')) color = 'text-pink-500 font-bold text-center my-2 border-none';
+                      else if (entry.includes('---')) color = 'text-gray-400 font-bold text-center my-4 border-none';
+
+                      return (
+                        <div key={idx} className={`mb-1 pl-2 py-1 border-l-2 ${color}`}>
+                          {entry.replace('[FLAVOR] ', '').replace('[WARNING] ', '')}
+                        </div>
+                      );
+                    })}
+                    <div ref={logEndRef} />
+                  </div>
+
+                  <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 p-3 md:p-4 rounded-lg shadow-lg">
+                    {(gameState.phase === 'combat' || gameState.phase === 'interrupt') && !gameState.player.isDowned && !gameState.enemy.isDowned && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div className="bg-black/60 p-2 rounded border border-gray-700">
+                                <div className="text-center text-gray-400 text-xs font-bold mb-2 tracking-widest uppercase">Target Select</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                   <button onClick={() => setGameState({...gameState, target: 'face'})} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.target === 'face' ? 'bg-red-800 border-red-500 text-white shadow-[0_0_10px_red]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>Face (HP)</button>
+                                   <button onClick={() => setGameState({...gameState, target: 'tits'})} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.target === 'tits' ? 'bg-purple-800 border-purple-500 text-white shadow-[0_0_10px_purple]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>Tits (Milk/Heat)</button>
+                                   <button onClick={() => setGameState({...gameState, target: 'belly'})} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.target === 'belly' ? 'bg-pink-800 border-pink-500 text-white shadow-[0_0_10px_pink]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>Belly (Agit)</button>
+                                </div>
+                            </div>
+
+                            <div className="bg-black/60 p-2 rounded border border-gray-700">
+                                <div className="text-center text-gray-400 text-xs font-bold mb-2 tracking-widest uppercase">Movement Select</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                   <button onClick={() => setGameState({...gameState, movement: 'retreat'})} disabled={gameState.range === 0} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.movement === 'retreat' ? 'bg-blue-800 border-blue-500 text-white shadow-[0_0_10px_blue]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`} title="Roll required. Costs 35 Stamina. Moves you to Long Range.">Retreat (Roll)</button>
+                                   <button onClick={() => setGameState({...gameState, movement: 'hold'})} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.movement === 'hold' ? 'bg-green-800 border-green-500 text-white shadow-[0_0_10px_green]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`} title="Free. No Defense Penalty. Maintains Current Range.">Hold Ground</button>
+                                   <button onClick={() => setGameState({...gameState, movement: 'advance'})} disabled={gameState.range === 2} className={`py-2 text-[10px] md:text-xs font-black uppercase rounded border transition-colors ${gameState.movement === 'advance' ? 'bg-orange-800 border-orange-500 text-white shadow-[0_0_10px_orange]' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`} title="Guaranteed. Costs 25 Stamina. Decreases Defense. Moves you to Close Range.">Advance (-Def)</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                  
+                    {(gameState.phase === 'combat' || gameState.phase === 'interrupt') && (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {gameState.player.isDowned ? (
+                            getDownedActions().map(action => {
+                              const actualCost = calcCost(action.cost, gameState.player.voluptuousness);
+                              return (
+                                <button key={action.id} onClick={() => executeTurn(action.id)} 
+                                        title={action.tooltip}
+                                        className={`p-2 md:p-3 border border-gray-600 rounded text-xs md:text-sm font-bold uppercase text-white transition-colors shadow-sm hover:brightness-125 flex flex-col items-center justify-between h-full min-h-[90px] ${action.color}`}>
+                                  <span className="text-center">{action.name}</span>
+                                  <div className="text-[10px] md:text-xs text-gray-300 font-normal mt-1 text-center leading-tight">{action.desc}</div>
+                                  <div className={`mt-2 text-[10px] md:text-xs font-black px-1 py-1 rounded w-full text-center ${action.type === 'restDowned' ? 'bg-green-900/80 text-green-300' : 'bg-black/60 text-red-400'}`}>
+                                    {action.type === 'restDowned' ? `+STAMINA` : `COST: ${actualCost} STAMINA`}
+                                  </div>
+                                </button>
+                              );
+                            })
+                        ) : gameState.enemy.isDowned ? (
+                            getEnemyDownedActions().map(action => {
+                              return (
+                                <button key={action.id} onClick={() => executeTurn(action.id)} 
+                                        title={action.desc}
+                                        className={`p-2 md:p-3 border border-gray-600 rounded text-xs md:text-sm font-bold uppercase text-white transition-colors shadow-sm hover:brightness-125 flex flex-col items-center justify-between h-full min-h-[90px] ${action.color}`}>
+                                  <span className="text-center">{action.name}</span>
+                                  <div className="text-[10px] md:text-xs text-gray-300 font-normal mt-1 text-center leading-tight">{action.desc}</div>
+                                  <div className={`mt-2 text-[10px] md:text-xs font-black px-1 py-1 rounded w-full text-center bg-black/60 text-green-400`}>
+                                    FREE ACTION
+                                  </div>
+                                </button>
+                              );
+                            })
+                        ) : (
+                            getActions(gameState.player.fetalSize, projectedRange, (gameState.player.fetalSize + gameState.enemy.fetalSize) >= 15, gameState.target).map(action => {
+                              const actualCost = calcCost(action.cost, gameState.player.voluptuousness);
+                              const isHeatDisabled = gameState.player.inHeat && action.type !== 'arousal';
+                              const isDisabled = action.disabled || isHeatDisabled;
+                              
+                              return (
+                                <button key={action.id} onClick={() => !isDisabled && executeTurn(action.id)} 
+                                        title={isHeatDisabled ? "DISABLED: Your preggo-brain is completely melted by lust! You can only Grapple/Grind!" : action.tooltip}
+                                        className={`p-2 md:p-3 border border-gray-600 rounded text-xs md:text-sm font-bold uppercase text-white transition-colors shadow-sm flex flex-col items-center justify-between h-full min-h-[90px] ${action.color} ${isDisabled ? 'opacity-30 grayscale cursor-not-allowed' : 'hover:brightness-125'}`}>
+                                  <span className="text-center">{action.name}</span>
+                                  <div className="text-[10px] md:text-xs text-gray-300 font-normal mt-1 text-center leading-tight">{action.desc}</div>
+                                  {action.type !== 'disabled' && !action.disabled && (
+                                      <div className={`mt-2 text-[10px] md:text-xs font-black px-1 py-1 rounded w-full text-center ${action.type === 'rest' ? 'bg-green-900/80 text-green-300' : 'bg-black/60 text-red-400'}`}>
+                                        {action.type === 'rest' ? `+WILL / STAM` : `COST: ${actualCost} STAM`}
+                                      </div>
+                                  )}
+                                </button>
+                              );
+                            })
+                        )}
+                      </div>
+                    )}
+
+                    {gameState.phase === 'pitstop' && (
+                      <div className="text-center">
+                        <h3 className="text-lg md:text-xl font-bold text-pink-500 uppercase tracking-widest mb-3">Triage Phase - Action {gameState.pitstopTurn}/2</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 justify-center">
+                          <button onClick={() => executePitStop('feed')} 
+                                  title="Restore HP & Stamina. The greasy hucow slop permanently increases Voluptuousness (Fat) and Strain. Pack more useless, sexualized meat onto your frame."
+                                  className="p-3 bg-green-900/40 hover:bg-green-800/60 border border-green-700 rounded text-white font-bold uppercase text-xs">
+                            Caloric Slop
+                            <div className="text-[10px] text-green-400 mt-1 font-normal">+HP/Stam, +Fat</div>
+                          </button>
+                          <button onClick={() => executePitStop('bladder')} 
+                                  title="Restore Stamina. Drain your severely pulverized bladder, easing the agonizing downward drag of your pregnant middle."
+                                  className="p-3 bg-yellow-900/40 hover:bg-yellow-800/60 border border-yellow-700 rounded text-white font-bold uppercase text-xs">
+                            Relieve Bladder
+                            <div className="text-[10px] text-yellow-400 mt-1 font-normal">+Stamina</div>
+                          </button>
+                          <button onClick={() => executePitStop('ring')} 
+                                  title="Prevents Climax this turn. Lock a tight band around your violently throbbing, painfully backed up jizz balloons to keep them contained."
+                                  className="p-3 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700 rounded text-white font-bold uppercase text-xs">
+                            Apply Cockring
+                            <div className="text-[10px] text-blue-400 mt-1 font-normal">Blocks Orgasm Check</div>
+                          </button>
+                          <button onClick={() => executePitStop('pump')} 
+                                  title="Clear Milk Bloat, but increases Arousal. Violently extract the thick cream from your distended hucow teats, leaving your squishy titmeat aching."
+                                  className="p-3 bg-gray-700/40 hover:bg-gray-600/60 border border-gray-500 rounded text-white font-bold uppercase text-xs">
+                            Industrial Pump
+                            <div className="text-[10px] text-gray-300 mt-1 font-normal">Empty Milk, +Arousal</div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {gameState.phase === 'gameover' && (
+                      <div className="text-center py-4 bg-black/60 border border-gray-800 rounded p-6 shadow-2xl max-w-4xl mx-auto">
+                        <h2 className={`text-2xl md:text-3xl font-black uppercase tracking-widest mb-6 border-b border-gray-700 pb-4 ${gameState.winner === 'player' ? 'text-pink-500' : gameState.winner === 'enemy' ? 'text-red-500' : 'text-gray-400'}`}>
+                          {gameState.winner === 'draw' ? 'DRAW: MUTUAL RUINATION' : gameState.winner === 'player' ? 'VICTORY: HOLLOW SURVIVAL' : 'DEFEAT: TOTAL SURRENDER'}
+                        </h2>
+                        
+                        {!gameState.epilogueStep ? (
+                            <div className="text-sm md:text-base text-gray-300 mb-8 space-y-4 px-4 text-left">
+                                {gameState.winner === 'player' && (
+                                    <>
+                                        <p>You stand over her unconscious frame. Sweat slicks your heavy, dimpled {rand(T_FAT)}. Suddenly, a brutal contraction rips through your distended 12-month {rand(T_BELLY)}. The macrosomic litter is dropping.</p>
+                                        <p>Futanari given the Strain 88.4 load suffer penile birth. The massive {rand(T_BRATS)} will violently force their way through your congested anatomy. However, your victory means you have enough prize credits to pay the arena medics for a C-section.</p>
+                                        <div className="flex flex-col gap-4 mt-6">
+                                            <button onClick={() => handleEpilogueChoice('win_csection')} className="p-4 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-white font-bold transition-all text-left">
+                                                >> Pay the medics for a C-Section and save your anatomy.
+                                            </button>
+                                            <button onClick={() => handleEpilogueChoice('win_natural')} className="p-4 bg-red-900/40 hover:bg-red-800/60 border border-red-700 rounded text-white font-bold transition-all text-left">
+                                                >> Keep the credits. Birth them the way nature intended.
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                                {gameState.winner === 'enemy' && (
+                                    <>
+                                        <p>Your fluid-logged knees buckle. You collapse under the sheer weight of your deep, dimpled {rand(T_FAT)}. You are officially corporate property.</p>
+                                        <p>A violent contraction seizes your drum-tight belly. The macrosomic litter is dropping. You have zero credits to your name. The massive brats are going to violently stretch their way out through your congested anatomy in an agonizing penile birth.</p>
+                                        <div className="flex flex-col gap-4 mt-6">
+                                            <button onClick={() => handleEpilogueChoice('lose_beg')} className="p-4 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-white font-bold transition-all text-left">
+                                                >> Beg the approaching handlers for a C-Section.
+                                            </button>
+                                            <button onClick={() => handleEpilogueChoice('lose_submit')} className="p-4 bg-red-900/40 hover:bg-red-800/60 border border-red-700 rounded text-white font-bold transition-all text-left">
+                                                >> Submit silently to the canvas and spread your heavy thighs.
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                                {gameState.winner === 'draw' && (
+                                    <>
+                                        <p>The final bell shrieks. Neither of you fell to strikes—your {rand(T_JOINTS)} simply gave out. You both lay gasping on the canvas, your massive, drum-tight bellies shifting violently as the engineered litters drop into your pelvises.</p>
+                                        <p>You have a fraction of the prize credits. Not enough for a C-section without selling yourself into a permanent corporate breeding contract. Otherwise, you face the agony of penile birth right here on the bloody mat.</p>
+                                        <div className="flex flex-col gap-4 mt-6">
+                                            <button onClick={() => handleEpilogueChoice('draw_contract')} className="p-4 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-white font-bold transition-all text-left">
+                                                >> Sign the debt contract for the C-Section.
+                                            </button>
+                                            <button onClick={() => handleEpilogueChoice('draw_canvas')} className="p-4 bg-red-900/40 hover:bg-red-800/60 border border-red-700 rounded text-white font-bold transition-all text-left">
+                                                >> Refuse the debt. Endure the penile birth alongside your rival.
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-sm md:text-base text-gray-300 mb-8 space-y-4 px-4 text-left">
+                                {gameState.epilogueStep === 'win_csection' && (
+                                    <>
+                                        <p>The medics slice open your taut, oiled {rand(T_BELLY)}, extracting the massive triplets. Your anatomy is saved, and your heavy breederfat is stitched back together. You still have a massive pile of leftover credits.</p>
+                                        <p>However, your deeply altered endocrine system is screaming. The empty ache in your heavy womb is driving you completely mad. You are biochemically addicted to extreme pregnancy.</p>
+                                        <div className="flex flex-col gap-4 mt-6">
+                                            <button onClick={() => handleEpilogueChoice('win_csection_cleanse')} className="p-4 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-white font-bold transition-all text-left">
+                                                >> Spend the remaining credits on a total hormonal cleanse.
+                                            </button>
+                                            <button onClick={() => handleEpilogueChoice('win_csection_escort')} className="p-4 bg-pink-900/40 hover:bg-pink-800/60 border border-pink-700 rounded text-white font-bold transition-all text-left">
+                                                >> Keep the credits. Purchase a penthouse and become a high-end surrogate.
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                                
+                                {gameState.epilogueStep === 'win_csection_cleanse' && (
+                                    <>
+                                        <p>You pump the expensive cleanse through your veins. The agonizing craving slowly fades. Over the next year, you meticulously train the heavy {rand(T_FAT)} off your hips, shrinking your bloated milkers back into hard pectorals.</p>
+                                        <p>You step back into the Underhive streets a wealthy, lethal warrior. You survived the pits and reclaimed your body.</p>
+                                    </>
+                                )}
+                                {gameState.epilogueStep === 'win_csection_escort' && (
+                                    <>
+                                        <p>You accept the heat. You use the credits to purchase a plush penthouse and contract yourself out to the Underhive's elite.</p>
+                                        <p>You spend your days as a wealthy, bedridden fuckmattress, your obscenely wide birthing hips constantly pinned to a silk mattress. You happily moan as you continuously incubate massive, demanding litters for rich patrons, leaking milk into expensive sheets. Your athletic past is nothing but a distant, blurry memory.</p>
+                                    </>
+                                )}
+                                {gameState.epilogueStep === 'win_natural' && (
+                                    <>
+                                        <p>You scream as the massive {rand(T_BRATS)} forcefully stretch your anatomy to the tearing point. The blinding agony of birthing three fat, hefty babies through your pregnancy-swollen meat permanently breaks something deep inside your hormone-cooked brain.</p>
+                                        <p>You have your credits, but your body is hopelessly, masochistically addicted to the excruciating stretch. You keep trying to escape the lifestyle, but you can never kick the habit. Less than a year later, you are back in an Underhive hospital bed, sobbing helplessly as you feel another hefty, squirming litter begin to drop, your ruined body eagerly preparing for the agony all over again.</p>
+                                        <p className="text-pink-400 font-bold italic mt-4">It only takes a few years for you to lose count of the brats you've pushed out of your loose, stretched out dick.</p>
+                                    </>
+                                )}
+
+                                {gameState.epilogueStep === 'lose_beg' && (
+                                    <>
+                                        <p>The handlers laugh at your sweaty, heaving frame. "C-sections are for paying customers." They drag your heavy-hipped, leaking body directly to the industrial milking racks.</p>
+                                        <p>Strapped down with your heavy thighs forced wide, you endure a gruesome, mind-breaking penile birth. Your ruined, blown-out body is now permanently designated as corporate breeding stock, kept constantly pregnant to churn out endless litters for the syndicate.</p>
+                                    </>
+                                )}
+                                {gameState.epilogueStep === 'lose_submit' && (
+                                    <>
+                                        <p>Your preggo-brain takes over. You let out a thick, musky moan and present your heavy, dripping breeder-loins to the handlers.</p>
+                                        <p>Right there on the canvas, the extreme penile labor begins. The impossible stretch shatters your mind completely. You are dragged into the winner's locker room as the arena's official post-match relief sow—a docile, leaking incubator completely addicted to your own degradation.</p>
+                                    </>
+                                )}
+
+                                {gameState.epilogueStep === 'draw_contract' && (
+                                    <>
+                                        <p>You desperately sign the datapad. The medics rush you to surgery, slicing your drum-tight belly open to extract the fetuses before your anatomy is ruined.</p>
+                                        <p>But the debt is massive. Stripped of your fighter status, your heavy, gelatinous frame is wheeled directly into the syndicate maternity wards. You will spend the next decade as a contract surrogate, using your extreme hourglass body to pay off the surgery one grueling pregnancy at a time.</p>
+                                    </>
+                                )}
+                                {gameState.epilogueStep === 'draw_canvas' && (
+                                    <>
+                                        <p>You refuse to owe them. You let out a guttural, bovine groan and bear down. Beside you, Siobhan screams as her own labor begins.</p>
+                                        <p>The extreme, agonizing stretch of the penile birth permanently blows out your anatomy and rewrites your mind. The intense rush of hormones leaves you both completely feral. You are no longer fighters—just two moaning, hyper-fertile broodmares, hopelessly addicted to the pain and hungry for your next litter.</p>
+                                    </>
+                                )}
+
+                                {(gameState.epilogueStep === 'win_csection_cleanse' || 
+                                  gameState.epilogueStep === 'win_csection_escort' || 
+                                  gameState.epilogueStep === 'win_natural' || 
+                                  gameState.epilogueStep === 'lose_beg' || 
+                                  gameState.epilogueStep === 'lose_submit' || 
+                                  gameState.epilogueStep === 'draw_contract' || 
+                                  gameState.epilogueStep === 'draw_canvas') && (
+                                    <div className="text-center mt-8 pt-6 border-t border-gray-700">
+                                        <button 
+                                          onClick={startGame}
+                                          className="px-8 py-3 bg-red-900/40 hover:bg-red-800/60 border border-red-500 text-red-100 font-black tracking-widest rounded transition-all shadow-[0_0_15px_rgba(220,38,38,0.4)]"
+                                        >
+                                          In another place and another time, a futanari steps into the ring...
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
