@@ -2,13 +2,13 @@ export const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export const T_BELLY = ["broodsac", "breeder-belly", "incubator-paunch", "fluid-balloon", "stretch-drum", "breeding-sack", "brood-tank", "front-loaded distension"];
 export const T_BRATS = ["chonks", "piggies", "womb-hogs", "meat-leeches", "slosh-brats", "marrow-suckers", "greedy piglets", "massive brats"];
-export const T_BRAT_ACT = ["startle-kick", "panic-thrash", "greed-slosh", "gut-punch", "strip-mine her muscle"];
+export const T_BRAT_ACT = ["startle-kick", "panic-thrash", "greed-slosh", "gut-punch", "strip-mine her muscle", "demand-squirm", "hunger-kick"];
 export const T_TITS = ["squishtits", "dairy-jugs", "slosh-boulders", "milk-melons", "bloat-bags", "titmeat", "breeder-udders", "heavy liabilities"];
 export const T_FAT = ["mommypadding", "breederfat", "fuckmattress", "cellulite-saddle", "thigh-jelly", "hip-slop", "breed-cushion", "heavily grounded base"];
 export const T_SOFT = ["skinny-fat", "butter-flesh", "yield-squish", "pillowy-ruin", "doughy", "hyper-estrogenic", "ruined", "softened"];
-export const T_FAT_ACT = ["waddle-slap", "tit-smother", "fat-trap", "squish-wedge"];
+export const T_FAT_ACT = ["waddle-slap", "tit-smother", "fat-trap", "squish-wedge", "blubber-slap", "adipose-drag"];
 export const T_JOINTS = ["balloon-joints", "bloat-tendons", "puff-knuckles", "shudder-twigs", "rubber-knees", "jelly-ankles", "melt-ligaments", "noodle-hips"];
-export const T_FLINCH = ["wobble-buckle", "pain-flinch", "joint-give", "lock up", "hyperextend"];
+export const T_FLINCH = ["wobble-buckle", "pain-flinch", "joint-give", "lock up", "hyperextend", "snap-buckle", "grind-seize"];
 
 export const FLAVOR_TEXTS = [
   { type: 'flavor', cond: (f) => f.fetalSize < 4 && !f.isDowned, text: "Sleek, hard, and toned. {name} moves with pure athletic arrogance, determined to rip her opponent apart before the seed can take root." },
@@ -32,6 +32,25 @@ export const FLAVOR_TEXTS = [
   { type: 'flavor', cond: (f) => f.inHeat, text: `SAVAGE HEAT! {name}'s mind screams in trapped horror! Her biology completely overrides her willpower, forcing her dripping, congested anatomy to wildly, humiliatingly rut!` },
   { type: 'flavor', cond: (f) => f.stamina < 300, text: `{name}'s doughy, cannibalized arms drop. She gasps for air, desperately ordering her massive, sloshing ${rand(T_BELLY)} to take just one more step.` },
   { type: 'flavor', cond: (f) => f.isDowned && f.fetalSize > 10, text: `Pinned like a stuck turtle under her own ${rand(T_BELLY)}, {name} thrashes violently on the mat, weeping in pure rage as her heavy, dimpled hips refuse to lift.` },
+  { type: 'flavor', cond: (f) => f.isDowned && f.fetalSize > 6, text: `{name} claws at the canvas, her massive ${rand(T_BELLY)} acting like a boulder strapped to her core. She screams at her own useless body, commanding it to RISE.` },
+  { type: 'flavor', cond: (f) => f.isDowned && f.voluptuousness >= 40, text: `Splayed on the canvas like a beached whale, {name}'s ${rand(T_FAT)} spreads obscenely around her. The crowd jeers as she fights to roll her ruined body onto its side.` },
+
+  // Mid-pregnancy flavor (fetalSize 4-7 — critical transition)
+  { type: 'flavor', cond: (f) => f.fetalSize >= 4 && f.fetalSize < 7 && !f.isDowned, text: `{name}'s center of gravity is visibly shifting. She stumbles on a pivot she's executed ten thousand times in training, cursing viciously as the growing ${rand(T_BELLY)} betrays her muscle memory.` },
+  { type: 'flavor', cond: (f) => f.fetalSize >= 5 && f.fetalSize < 8 && !f.isDowned, text: `The ${rand(T_BRATS)} are getting heavier by the minute. {name} can feel them rearranging her insides, the greedy parasites already cannibalizing her hard-earned muscle to fuel their growth.` },
+  { type: 'flavor', cond: (f) => f.fetalSize >= 4 && f.fetalSize < 7 && !f.isDowned, text: `{name}'s waistband has split. The firm dome of her pregnant belly juts forward, straining against whatever containment is left. She adjusts her stance wider, accommodating the alien mass with cold fury.` },
+
+  // High voluptuousness (long-lived late-game state)
+  { type: 'flavor', cond: (f) => f.voluptuousness >= 75 && !f.isDowned, text: `The sheer, obscene width of {name}'s hips forces the ropes apart when she leans back. Every square inch of her is padded with dense, sloshing ${rand(T_FAT)}, but behind her eyes, the killer still lives.` },
+  { type: 'flavor', cond: (f) => f.voluptuousness >= 60 && f.voluptuousness < 85 && !f.isDowned, text: `{name}'s formerly athletic thighs now clap together with every step, the dense ${rand(T_FAT)} jiggling in humiliating waves. She grits her teeth and channels the shame into raw, desperate violence.` },
+
+  // Arousal flavor
+  { type: 'flavor', cond: (f) => f.arousal >= 40 && f.arousal < 60 && !f.inHeat && !f.isDowned, text: `A treacherous warmth pools between {name}'s thick thighs. She punches her own hip in furious denial, but her engorged anatomy throbs on, indifferent to her willpower.` },
+  { type: 'flavor', cond: (f) => f.arousal >= 55 && f.arousal < 75 && !f.inHeat && !f.isDowned, text: `{name}'s pupils are dilating. Her breath comes in ragged, involuntary gasps as her hormone-flooded brain wages a losing war against the tide of forced arousal building in her ruined body.` },
+
+  // Late-game crowd/environmental
+  { type: 'flavor', cond: (f) => f.fetalSize >= 8 && f.voluptuousness >= 50 && !f.isDowned, text: `A handler at ringside mutters into a radio, pre-staging the maternity gurney. The crowd catches the movement and roars — they know what it means. The end is close.` },
+  { type: 'flavor', cond: (f) => f.voluptuousness >= 65 && f.fetalSize >= 7 && !f.isDowned, text: `The arena's industrial ventilation struggles against the thick miasma of hormones, milk, and desperation. Front-row spectators press scarves to their faces, but none look away from {name}'s waddling, dripping spectacle.` },
 
   { type: 'warning', cond: (f) => f.strain >= 65 && f.strain < 85 && !f.isDowned, text: `STRAIN CRITICAL: {name}'s ${rand(T_JOINTS)} buckle! She is trading her skeletal integrity for every punch!` },
   { type: 'warning', cond: (f) => f.voluptuousness >= 65 && f.voluptuousness < 85, text: `BREEDERFAT CRITICAL: {name}'s dense, suffocating padding is actively crushing her lungs, starving her of stamina!` },
@@ -82,12 +101,22 @@ export const ENEMY_BARKS = [
   { cond: (f) => f.strain >= 70 && !f.isDowned, text: `"Everything... grinds. Every step is glass in my joints."` },
   { cond: (f) => f.voluptuousness >= 75 && !f.isDowned, text: `"I'm drowning... in my own fat... I used to be a FIGHTER..."` },
 
+  // Mid degradation — additional
+  { cond: (f) => f.fetalSize >= 5 && f.fetalSize < 9 && f.voluptuousness >= 25 && !f.isDowned, text: `"I can hear them... moving inside me... feeding... I HATE them..."` },
+
+  // Late degradation — additional
+  { cond: (f) => f.fetalSize >= 9 && f.voluptuousness >= 50 && !f.isDowned, text: `"I used to... run marathons... now I can't... even stand up straight..."` },
+
   // Arousal / heat
   { cond: (f) => f.arousal >= 50 && f.arousal < 70 && !f.inHeat && !f.isDowned, text: `"N-no... not here... not in front of them..."` },
   { cond: (f) => f.arousal >= 60 && !f.inHeat && !f.isDowned, text: `"Stop... looking at me... I can't... concentrate..."` },
+  { cond: (f) => f.arousal >= 45 && f.arousal < 65 && !f.inHeat && !f.isDowned, text: `"My body is... betraying me... I can feel it... throbbing... NO..."` },
+  { cond: (f) => f.arousal >= 55 && !f.inHeat && !f.isDowned, text: `"If I cum in front of... all these people... I'll... I'll never..."` },
 
   // Downed
   { cond: (f) => f.isDowned && f.fetalSize < 8, text: `"Get UP. GET UP, you stupid body!"` },
   { cond: (f) => f.isDowned && f.fetalSize >= 8, text: `"I can't... the belly... it's pinning me... NO!"` },
-  { cond: (f) => f.isDowned && f.voluptuousness >= 50, text: `"My own fat... is holding me down... this isn't... I'm not this..."` }
+  { cond: (f) => f.isDowned && f.voluptuousness >= 50, text: `"My own fat... is holding me down... this isn't... I'm not this..."` },
+  { cond: (f) => f.isDowned && f.fetalSize >= 6, text: `"The mat is... so far down... and getting back up is... impossible... NO. MOVE."` },
+  { cond: (f) => f.isDowned && f.strain >= 40, text: `"My knees... I can hear them grinding... just... one... more... time..."` }
 ];
