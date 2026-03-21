@@ -44,7 +44,8 @@ export const INITIAL_STATE = {
     isDistracted: false,
     isAdvancing: false,
     consecutiveHits: 0,
-    effect: { type: null, turn: 0 }
+    effect: { type: null, turn: 0 },
+    milestones: { m4: false, m7: false, m10: false, m12: false }
   },
   enemy: {
     name: 'Siobhan',
@@ -68,7 +69,8 @@ export const INITIAL_STATE = {
     isDistracted: false,
     isAdvancing: false,
     consecutiveHits: 0,
-    effect: { type: null, turn: 0 }
+    effect: { type: null, turn: 0 },
+    milestones: { m4: false, m7: false, m10: false, m12: false }
   },
   log: [
     "Welcome to the Underhive Pits.",
