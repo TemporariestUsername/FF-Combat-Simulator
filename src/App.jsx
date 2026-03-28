@@ -13,6 +13,8 @@ import IntroScreen from './components/phases/IntroScreen.jsx';
 import MenuScreen from './components/phases/MenuScreen.jsx';
 import PitStopPanel from './components/phases/PitStopPanel.jsx';
 import GameOverScreen from './components/phases/GameOverScreen.jsx';
+import CharacterSelectScreen from './components/phases/CharacterSelectScreen.jsx';
+import { FIGHTER_ROSTER, applyStatMods } from './data/characters.js';
 
 function App() {
   const [gameState, setGameState] = useState(INITIAL_STATE);
@@ -22,11 +24,19 @@ function App() {
     if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [gameState.log]);
 
-  const startGame = () => {
+  const goToSelect = () => {
+    setGameState({ ...INITIAL_STATE, phase: 'select' });
+  };
+
+  const startCombat = (playerCharId, enemyCharId) => {
+    const playerRoster = FIGHTER_ROSTER.find(f => f.id === playerCharId);
+    const enemyRoster = FIGHTER_ROSTER.find(f => f.id === enemyCharId);
     setGameState({
       ...INITIAL_STATE,
       phase: 'combat',
-      log: ["The bell shrieks. The fighters step forward. Relish your strength now; your bodies will soon betray you."]
+      player: applyStatMods(INITIAL_STATE.player, playerRoster),
+      enemy: applyStatMods(INITIAL_STATE.enemy, enemyRoster),
+      log: [`The bell shrieks. ${playerRoster.name} vs ${enemyRoster.name}. Relish your strength now; your bodies will soon betray you.`]
     });
   };
 
@@ -933,7 +943,7 @@ function App() {
         </h1>
         <p className="text-pink-400/70 text-xs tracking-widest font-mono mt-1 mb-2">THE UNDERHIVE PITS</p>
 
-        {gameState.phase !== 'menu' && gameState.phase !== 'intro' && (
+        {gameState.phase !== 'menu' && gameState.phase !== 'intro' && gameState.phase !== 'select' && (
           <div className="mt-3 inline-flex flex-col items-center">
              <div className="bg-black/80 px-4 md:px-6 py-2 rounded-full border border-pink-900/50 shadow-[0_0_10px_rgba(255,0,128,0.2)] mb-2">
               {gameState.phase === 'pitstop' ? (
@@ -964,8 +974,12 @@ function App() {
         <IntroScreen onContinue={() => setGameState({...gameState, phase: 'menu'})} />
       )}
 
+      {gameState.phase === 'select' && (
+        <CharacterSelectScreen roster={FIGHTER_ROSTER} onConfirm={startCombat} />
+      )}
+
       {gameState.phase === 'menu' && (
-        <MenuScreen onStart={startGame} />
+        <MenuScreen onStart={goToSelect} />
       )}
 
       {(gameState.phase === 'combat' || gameState.phase === 'pitstop' || gameState.phase === 'gameover' || gameState.phase === 'interrupt') && (
@@ -991,7 +1005,7 @@ function App() {
               <GameOverScreen
                 gameState={gameState}
                 onEpilogueChoice={handleEpilogueChoice}
-                onRestart={startGame}
+                onRestart={goToSelect}
               />
             )}
           </div>
